@@ -941,6 +941,9 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
                         <p className="font-mono-data text-xs text-[#A51C20] font-semibold">
                           {c.installments}x de {formatCurrency(c.installmentValue)}
                         </p>
+                        <p className="text-xs text-zinc-500 mt-0.5">
+                          Faturas: {c.invoiceDeliveryMethod || 'WhatsApp'}
+                        </p>
                       </td>
                       <td className="py-3.5 px-4 text-xs">
                         <p className="font-semibold text-zinc-800">{c.bankName}</p>

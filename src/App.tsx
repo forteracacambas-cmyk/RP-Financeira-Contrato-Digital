@@ -11,7 +11,9 @@ import {
   calculateInstallmentValue,
   COMPANY_INFO,
   formatCurrency,
+  getAutoFirstDueDate,
   INSTALLMENT_OPTIONS,
+  isValidBirthDate,
   isValidCPF,
   OFFICIAL_RATE_TABLE,
   onlyDigits,
@@ -29,11 +31,6 @@ import { PanelView } from './components/PanelView';
 
 type AppView = 'home' | 'consult' | 'receipt' | 'panel';
 
-function getDefaultDueDate(): string {
-  const d = new Date(Date.now() + 30 * 86400000);
-  return d.toISOString().slice(0, 10);
-}
-
 const INITIAL_FORM: LoanContractInput = {
   agentCode: '',
   loanAmount: 10000,
@@ -41,7 +38,8 @@ const INITIAL_FORM: LoanContractInput = {
   installmentValue: calculateInstallmentValue(10000, 24),
   monthlyRatePercent: COMPANY_INFO.monthlyRatePercent,
   totalPayable: Math.round(calculateInstallmentValue(10000, 24) * 24 * 100) / 100,
-  firstDueDate: getDefaultDueDate(),
+  firstDueDate: getAutoFirstDueDate(),
+  invoiceDeliveryMethod: 'WhatsApp',
 
   fullName: '',
   cpf: '',
@@ -139,6 +137,7 @@ export default function App() {
     () => ({
       ...form,
       agentCode: agentState.agentCode || form.agentCode,
+      firstDueDate: getAutoFirstDueDate(),
       installmentValue: computedInstallment,
       totalPayable: computedTotal,
     }),
@@ -268,7 +267,7 @@ export default function App() {
     setForm({
       ...INITIAL_FORM,
       agentCode: agentState.agentCode || '',
-      firstDueDate: getDefaultDueDate(),
+      firstDueDate: getAutoFirstDueDate(),
     });
     setView('home');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -293,8 +292,8 @@ export default function App() {
     if (form.rgOrCnh.trim().length < 4) {
       return 'Informe o número do seu RG ou CNH.';
     }
-    if (!form.birthDate) {
-      return 'Informe sua data de nascimento.';
+    if (!isValidBirthDate(form.birthDate)) {
+      return 'Informe uma data de nascimento válida (dia/mês/ano).';
     }
     if (onlyDigits(form.phone).length < 10) {
       return 'Informe um celular / WhatsApp com DDD.';

@@ -1,6 +1,6 @@
 import React from 'react';
 import { CheckCircle2, ShieldCheck } from 'lucide-react';
-import { COMPANY_INFO, formatCurrency } from '../lib/loanTable';
+import { COMPANY_INFO, formatBirthDateDisplay, formatCurrency } from '../lib/loanTable';
 import type { LoanContractInput, SignedLoanContract } from '../types/contract';
 import { BrandLogo } from './BrandLogo';
 import { AuthenticationSeals } from './AuthenticationSeals';
@@ -94,7 +94,7 @@ export const ContractDocument: React.FC<ContractDocumentProps> = ({
               <div className="flex justify-between gap-3">
                 <dt className="text-zinc-500">Nascimento:</dt>
                 <dd className="font-mono-data text-zinc-800 text-right">
-                  {data.birthDate ? new Date(`${data.birthDate}T12:00:00`).toLocaleDateString('pt-BR') : '—'}
+                  {formatBirthDateDisplay(data.birthDate)}
                 </dd>
               </div>
               <div className="flex justify-between gap-3">
@@ -153,6 +153,12 @@ export const ContractDocument: React.FC<ContractDocumentProps> = ({
               <div className="flex justify-between gap-3">
                 <dt className="text-zinc-500">1º Vencimento:</dt>
                 <dd className="font-mono-data text-zinc-800 text-right">{formattedDueDate}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-zinc-500">Envio das Faturas:</dt>
+                <dd className="font-semibold text-zinc-800 text-right">
+                  {data.invoiceDeliveryMethod || 'WhatsApp'}
+                </dd>
               </div>
               <div className="pt-2 border-t border-zinc-100 flex justify-between gap-3">
                 <dt className="text-zinc-600 font-semibold">Total Contratado:</dt>
@@ -223,8 +229,7 @@ export const ContractDocument: React.FC<ContractDocumentProps> = ({
             <p className="break-inside-avoid">
               <strong className="text-zinc-900">CLÁUSULA 3ª — DO PARCELAMENTO E PAGAMENTO:</strong> O CONTRATANTE obriga-se a restituir o montante total de{' '}
               <strong>{formatCurrency(data.totalPayable)}</strong> em{' '}
-              <strong>{data.installments} parcelas mensais e sucessivas de {formatCurrency(data.installmentValue)}</strong>, com primeiro vencimento previsto para{' '}
-              <strong>{formattedDueDate}</strong>, apuradas pela Tabela Price conforme tabela vigente da RP FINANCEIRA.
+              <strong>{data.installments} parcelas mensais e sucessivas de {formatCurrency(data.installmentValue)}</strong>, com primeiro vencimento automático após 30 dias da assinatura ({formattedDueDate}) e envio das faturas via <strong>{data.invoiceDeliveryMethod || 'WhatsApp'}</strong>, apuradas pela Tabela Price conforme tabela vigente da RP FINANCEIRA.
             </p>
             <p className="break-inside-avoid">
               <strong className="text-zinc-900">CLÁUSULA 4ª — DOS JUROS E ENCARGOS:</strong> Incidem sobre o saldo devedor juros remuneratórios prefixados de{' '}

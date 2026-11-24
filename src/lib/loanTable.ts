@@ -158,6 +158,66 @@ export function formatCEP(value: string): string {
   return digits.replace(/(\d{5})(\d)/, '$1-$2');
 }
 
+export function getAutoFirstDueDate(baseDate: Date = new Date()): string {
+  const target = new Date(baseDate.getTime() + 30 * 86400000);
+  const year = target.getFullYear();
+  const month = String(target.getMonth() + 1).padStart(2, '0');
+  const day = String(target.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function formatBirthDate(value: string): string {
+  const digits = onlyDigits(value).slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+export function isValidBirthDate(value: string): boolean {
+  const trimmed = value.trim();
+  let day = 0;
+  let month = 0;
+  let year = 0;
+
+  const brMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(trimmed);
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+
+  if (brMatch) {
+    day = Number(brMatch[1]);
+    month = Number(brMatch[2]);
+    year = Number(brMatch[3]);
+  } else if (isoMatch) {
+    year = Number(isoMatch[1]);
+    month = Number(isoMatch[2]);
+    day = Number(isoMatch[3]);
+  } else {
+    return false;
+  }
+
+  const now = new Date();
+  if (year < 1900 || year > now.getFullYear()) return false;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+
+  const date = new Date(year, month - 1, day);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return false;
+  }
+  return date.getTime() <= now.getTime();
+}
+
+export function formatBirthDateDisplay(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '—';
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) return trimmed;
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (isoMatch) return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}`;
+  return trimmed;
+}
+
 export const BRAZILIAN_BANKS = [
   '001 - Banco do Brasil',
   '033 - Banco Santander',

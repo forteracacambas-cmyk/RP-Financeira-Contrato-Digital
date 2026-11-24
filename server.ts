@@ -6,6 +6,14 @@ import { createApi } from './api.ts';
 
 const app = express();
 const api = createApi();
+app.use('/api', (req, _res, next) => {
+  if (!req.headers['cf-connecting-ip'] && !req.headers['x-forwarded-for'] && !req.headers['x-real-ip']) {
+    if (req.socket?.remoteAddress) {
+      req.headers['x-real-ip'] = req.socket.remoteAddress;
+    }
+  }
+  next();
+});
 app.all('/api/{*path}', getRequestListener((request) => api.fetch(request, process.env)));
 
 if (process.env.NODE_ENV !== 'production') {

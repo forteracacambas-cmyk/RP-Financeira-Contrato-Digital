@@ -1,5 +1,6 @@
 export type AccountType = 'Conta Corrente' | 'Conta Poupança' | 'Conta Pagamento';
 export type PixKeyType = 'CPF' | 'Celular' | 'E-mail' | 'Chave Aleatória';
+export type InvoiceDeliveryMethod = 'WhatsApp' | 'E-mail' | 'WhatsApp e E-mail';
 export type UserRole = 'admin' | 'employee';
 
 export interface PanelUserPublic {
@@ -17,6 +18,7 @@ export interface VisitRecord {
   agentId: string;
   agentCode: string;
   visitedAt: string;
+  ipHash?: string;
 }
 
 export interface LoanContractInput {
@@ -27,6 +29,7 @@ export interface LoanContractInput {
   monthlyRatePercent: number;
   totalPayable: number;
   firstDueDate: string;
+  invoiceDeliveryMethod?: InvoiceDeliveryMethod;
 
   fullName: string;
   cpf: string;

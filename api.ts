@@ -1,10 +1,11 @@
 import crypto from 'node:crypto';
 import { Hono } from 'hono';
 import { SupabaseStore } from './supabase-store.ts';
-import { calculateInstallmentValue, COMPANY_INFO, isValidCPF, onlyDigits } from './src/lib/loanTable.ts';
+import { calculateInstallmentValue, COMPANY_INFO, isValidBirthDate, isValidCPF, onlyDigits } from './src/lib/loanTable.ts';
 import type {
   ContractVerificationAudit,
   DashboardEmployeeStat,
+  InvoiceDeliveryMethod,
   LoanContractInput,
   PanelUserPublic,
   SignedLoanContract,
@@ -27,6 +28,7 @@ interface ApiRequest {
   config: ApiConfig;
   authUser?: StoredUser;
   db: SupabaseStore;
+  clientIp: string;
   headers: { authorization: string; 'user-agent': string };
   body: Record<string, unknown>;
   query: Record<string, string>;
@@ -153,7 +155,7 @@ function buildVerificationAudit(contract: SignedLoanContract): ContractVerificat
   const personalDataComplete =
     contract.fullName.length >= 5 &&
     contract.rgOrCnh.length >= 4 &&
-    contract.birthDate.length >= 8 &&
+    isValidBirthDate(contract.birthDate) &&
     onlyDigits(contract.phone).length >= 10 &&
     contract.email.includes('@') &&
     contract.street.length >= 3 &&
@@ -241,6 +243,70 @@ function getDateRangeBounds(
   }
 }
 
+function getBrazilDueDatePlus30(nowMs: number): string {
+  const target = new Date(nowMs + 30 * 86400000);
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(target);
+    const y = parts.find((p) => p.type === 'year')?.value;
+    const m = parts.find((p) => p.type === 'month')?.value;
+    const d = parts.find((p) => p.type === 'day')?.value;
+    if (y && m && d) return `${y}-${m}-${d}`;
+  } catch {
+    // Fallback UTC-3
+  }
+  return new Date(target.getTime() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+function extractClientIp(getHeader: (name: string) => string | undefined): string {
+  const candidates = [
+    getHeader('cf-connecting-ip'),
+    getHeader('true-client-ip'),
+    getHeader('x-forwarded-for')?.split(',')[0],
+    getHeader('x-real-ip'),
+  ];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    let ip = raw.trim().slice(0, 64);
+    if (ip.startsWith('::ffff:')) {
+      ip = ip.slice(7);
+    }
+    if (ip) return ip;
+  }
+  return '';
+}
+
+function hashVisitorIp(agentId: string, clientIp: string, userAgent: string, secret: string): string {
+  const identifier = clientIp || `ua:${userAgent.slice(0, 120) || 'unknown'}`;
+  return crypto.createHmac('sha256', secret).update(`${agentId}:${identifier}`).digest('hex');
+}
+
+function deduplicateVisits(visits: VisitRecord[], tzOffsetMinutes?: number): VisitRecord[] {
+  const offsetMin = Number.isFinite(tzOffsetMinutes) ? (tzOffsetMinutes as number) : 180;
+  const offsetMs = offsetMin * 60 * 1000;
+  const seen = new Set<string>();
+  const unique: VisitRecord[] = [];
+  for (const v of visits) {
+    if (!v.ipHash) {
+      unique.push(v);
+      continue;
+    }
+    const shifted = new Date(new Date(v.visitedAt).getTime() - offsetMs);
+    const dayKey = `${shifted.getUTCFullYear()}-${shifted.getUTCMonth()}-${shifted.getUTCDate()}`;
+    const key = `${v.agentId}:${v.ipHash}:${dayKey}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(v);
+  }
+  return unique;
+}
+
+const recentVisitCache = new Map<string, number>();
+
 export function createApi() {
   const app = new Hono<{ Bindings: ApiConfig }>();
   function route(method: string, path: string, handler: ApiHandler, requiresAuth = false) {
@@ -282,6 +348,7 @@ export function createApi() {
         config,
         db,
         body,
+        clientIp: extractClientIp((name) => context.req.header(name)),
         headers: {
           authorization: context.req.header('authorization') ?? '',
           'user-agent': context.req.header('user-agent') ?? '',
@@ -384,7 +451,7 @@ export function createApi() {
     return res.json({ user: toPublicUser(req.authUser!) });
   }, true);
 
-  // Validate agent link & log visit
+  // Validate agent link & log visit (deduplicated per IP within 24h)
   route('POST', '/api/visits', async (req, res) => {
     const rawCode = sanitizeString(req.body?.agentCode, 50);
     const agentCode = sanitizeSlug(rawCode);
@@ -399,18 +466,66 @@ export function createApi() {
       });
     }
 
+    const nowMs = Date.now();
+    const ipHash = hashVisitorIp(
+      agent.id,
+      req.clientIp,
+      req.headers['user-agent'],
+      req.config.SESSION_SECRET!
+    );
+    const cacheKey = `${agent.id}:${ipHash}`;
+
+    if (recentVisitCache.size > 500) {
+      for (const [k, exp] of recentVisitCache) {
+        if (exp <= nowMs) recentVisitCache.delete(k);
+      }
+    }
+
+    const cachedExp = recentVisitCache.get(cacheKey);
+    if (cachedExp && cachedExp > nowMs) {
+      return res.status(200).json({
+        valid: true,
+        agentName: agent.name,
+        agentCode: agent.agentCode,
+        counted: false,
+      });
+    }
+
+    const windowStartIso = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
+    const windowEndIso = new Date(nowMs + 60 * 1000).toISOString();
+    const recentActivity = await req.db.activity(windowStartIso, windowEndIso, agent.id);
+    const alreadyVisited = recentActivity.visits.some((v) => v.ipHash === ipHash);
+
+    if (alreadyVisited || (recentVisitCache.get(cacheKey) ?? 0) > nowMs) {
+      recentVisitCache.set(cacheKey, nowMs + 10 * 60 * 1000);
+      return res.status(200).json({
+        valid: true,
+        agentName: agent.name,
+        agentCode: agent.agentCode,
+        counted: false,
+      });
+    }
+
+    recentVisitCache.set(cacheKey, nowMs + 10 * 60 * 1000);
     const visit: VisitRecord = {
       id: crypto.randomUUID(),
       agentId: agent.id,
       agentCode: agent.agentCode,
-      visitedAt: new Date().toISOString(),
+      visitedAt: new Date(nowMs).toISOString(),
+      ipHash,
     };
-    await req.db.insertVisit(visit);
+    try {
+      await req.db.insertVisit(visit);
+    } catch (err) {
+      recentVisitCache.delete(cacheKey);
+      throw err;
+    }
 
     return res.status(201).json({
       valid: true,
       agentName: agent.name,
       agentCode: agent.agentCode,
+      counted: true,
     });
   });
 
@@ -433,7 +548,8 @@ export function createApi() {
     const begin = new Date(startMs).toISOString();
     const end = new Date(endMs).toISOString();
     const scope = authUser.role === 'admin' ? null : authUser.id;
-    const { visits: visitsInRange, contracts: contractsInRange } = await db.activity(begin, end, scope);
+    const { visits: rawVisitsInRange, contracts: contractsInRange } = await db.activity(begin, end, scope);
+    const visitsInRange = deduplicateVisits(rawVisitsInRange, tzOffset);
 
     const filteredVisits = filterAgentId
       ? visitsInRange.filter((v) => v.agentId === filterAgentId)
@@ -607,7 +723,13 @@ export function createApi() {
       const accountNumber = sanitizeString(body.accountNumber, 30);
       const pixKeyType = body.pixKeyType;
       const pixKey = sanitizeString(body.pixKey, 120);
-      const firstDueDate = sanitizeString(body.firstDueDate, 20);
+      const rawInvoiceMethod = body.invoiceDeliveryMethod;
+      const invoiceDeliveryMethod: InvoiceDeliveryMethod =
+        rawInvoiceMethod === 'WhatsApp' ||
+        rawInvoiceMethod === 'E-mail' ||
+        rawInvoiceMethod === 'WhatsApp e E-mail'
+          ? rawInvoiceMethod
+          : 'WhatsApp';
 
       if (fullName.length < 5) {
         return res.status(400).json({ error: 'Informe o nome completo do contratante.' });
@@ -615,8 +737,8 @@ export function createApi() {
       if (!isValidCPF(cpf)) {
         return res.status(400).json({ error: 'CPF inválido. Verifique os dígitos informados.' });
       }
-      if (rgOrCnh.length < 4 || birthDate.length < 8) {
-        return res.status(400).json({ error: 'Informe RG/CNH e data de nascimento válidos.' });
+      if (rgOrCnh.length < 4 || !isValidBirthDate(birthDate)) {
+        return res.status(400).json({ error: 'Informe RG/CNH e data de nascimento válida (DD/MM/AAAA).' });
       }
       if (onlyDigits(phone).length < 10 || !email.includes('@')) {
         return res.status(400).json({ error: 'Informe telefone/WhatsApp e e-mail válidos.' });
@@ -647,7 +769,9 @@ export function createApi() {
       const protocol = generateProtocol();
       const accessToken = crypto.randomBytes(12).toString('hex');
       const certificateCode = `ICP-RP-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-      const signedAt = new Date().toISOString();
+      const signedAtMs = Date.now();
+      const signedAt = new Date(signedAtMs).toISOString();
+      const autoFirstDueDate = getBrazilDueDatePlus30(signedAtMs);
       const rawUa = sanitizeString(req.headers['user-agent'] || 'Navegador Web', 120);
 
       const unsignedRecord: Omit<SignedLoanContract, 'integrityHash'> = {
@@ -665,7 +789,8 @@ export function createApi() {
         installmentValue: serverInstallment,
         monthlyRatePercent: COMPANY_INFO.monthlyRatePercent,
         totalPayable,
-        firstDueDate: firstDueDate || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+        firstDueDate: autoFirstDueDate,
+        invoiceDeliveryMethod,
         fullName,
         cpf,
         rgOrCnh,

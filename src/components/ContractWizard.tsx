@@ -16,16 +16,24 @@ import {
   BRAZILIAN_BANKS,
   BRAZILIAN_STATES,
   COMPANY_INFO,
+  formatBirthDate,
   formatCEP,
   formatCPF,
   formatCurrency,
   formatPhone,
+  getAutoFirstDueDate,
   INSTALLMENT_OPTIONS,
+  isValidBirthDate,
   isValidCPF,
   OFFICIAL_RATE_TABLE,
   onlyDigits,
 } from '../lib/loanTable';
-import type { AccountType, LoanContractInput, PixKeyType } from '../types/contract';
+import type {
+  AccountType,
+  InvoiceDeliveryMethod,
+  LoanContractInput,
+  PixKeyType,
+} from '../types/contract';
 import { SignatureCanvas } from './SignatureCanvas';
 import { ContractDocument } from './ContractDocument';
 import { AuthenticationSeals } from './AuthenticationSeals';
@@ -73,6 +81,8 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
 
   const cpfDigits = onlyDigits(form.cpf);
   const cpfIsValid = cpfDigits.length === 11 && isValidCPF(form.cpf);
+  const birthDigits = onlyDigits(form.birthDate);
+  const birthIsValid = isValidBirthDate(form.birthDate);
   const cepDigits = onlyDigits(form.cep);
 
   const lookupCep = async (rawCep: string) => {
@@ -109,7 +119,7 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
         form.fullName.trim().length >= 5 &&
         cpfIsValid &&
         form.rgOrCnh.trim().length >= 4 &&
-        Boolean(form.birthDate) &&
+        birthIsValid &&
         onlyDigits(form.phone).length >= 10 &&
         form.email.includes('@') &&
         form.email.includes('.') &&
@@ -133,9 +143,6 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
       if (form.loanAmount < 1000 || form.loanAmount > 100000) {
         return 'O valor do empréstimo deve estar entre R$ 1.000,00 e R$ 100.000,00.';
       }
-      if (!form.firstDueDate) {
-        return 'Selecione a data prevista para o 1º vencimento.';
-      }
       return null;
     }
     if (stepNum === 2) {
@@ -148,8 +155,8 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
       if (form.rgOrCnh.trim().length < 4) {
         return 'Informe o número do seu RG ou CNH.';
       }
-      if (!form.birthDate) {
-        return 'Informe sua data de nascimento.';
+      if (!birthIsValid) {
+        return 'Informe uma data de nascimento válida (dia/mês/ano).';
       }
       if (onlyDigits(form.phone).length < 10) {
         return 'Informe um celular / WhatsApp com DDD.';
@@ -220,8 +227,11 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
     scrollWizardTop();
   };
 
+  const autoFirstDueDate = getAutoFirstDueDate();
+
   const currentFormWithCalculations: LoanContractInput = {
     ...form,
+    firstDueDate: autoFirstDueDate,
     installmentValue: computedInstallment,
     totalPayable: computedTotal,
   };
@@ -423,17 +433,45 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
                       {formatCurrency(computedInstallment)}
                     </p>
                   </div>
-                  <div>
-                    <label htmlFor="wizard-due-date" className="block text-xs font-semibold text-zinc-700 mb-1.5">
-                      1º Vencimento
-                    </label>
-                    <input
-                      id="wizard-due-date"
-                      type="date"
-                      value={form.firstDueDate}
-                      onChange={(e) => updateField('firstDueDate', e.target.value)}
-                      className="w-full h-12 px-3.5 rounded-xl border border-zinc-300 bg-white font-mono-data text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-[#A51C20]/25 focus:border-[#A51C20]"
-                    />
+                  <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200">
+                    <p className="text-xs text-zinc-500">1º Vencimento (30 dias)</p>
+                    <p className="font-mono-data text-xl font-extrabold text-zinc-900 mt-1">
+                      {new Date(`${autoFirstDueDate}T12:00:00`).toLocaleDateString('pt-BR')}
+                    </p>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                      Automático após 30 dias da assinatura
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-zinc-200">
+                  <p className="text-xs font-semibold text-zinc-700 mb-2.5">
+                    Como deseja receber as faturas das parcelas? *
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {(
+                      [
+                        { value: 'WhatsApp', label: 'WhatsApp (Fatura)' },
+                        { value: 'E-mail', label: 'E-mail' },
+                        { value: 'WhatsApp e E-mail', label: 'Os 2 (WhatsApp e E-mail)' },
+                      ] as { value: InvoiceDeliveryMethod; label: string }[]
+                    ).map((opt) => {
+                      const active = (form.invoiceDeliveryMethod || 'WhatsApp') === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => updateField('invoiceDeliveryMethod', opt.value)}
+                          className={`min-h-[46px] px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                            active
+                              ? 'border-[#A51C20] bg-[#A51C20] text-white shadow-sm'
+                              : 'border-zinc-200 bg-zinc-50 text-zinc-800 hover:border-zinc-300 hover:bg-zinc-100'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </>
@@ -506,15 +544,27 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
 
                   <div>
                     <label htmlFor="birth-date" className="block text-xs font-semibold text-zinc-700 mb-1.5">
-                      Data de Nascimento *
+                      Data de Nascimento (DD/MM/AAAA) *
                     </label>
                     <input
                       id="birth-date"
-                      type="date"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={10}
                       value={form.birthDate}
-                      onChange={(e) => updateField('birthDate', e.target.value)}
-                      className="w-full h-11 px-3.5 rounded-xl border border-zinc-300 bg-white font-mono-data text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-[#A51C20]/25 focus:border-[#A51C20]"
+                      onChange={(e) => updateField('birthDate', formatBirthDate(e.target.value))}
+                      placeholder="DD/MM/AAAA"
+                      className={`w-full h-11 px-3.5 rounded-xl border bg-white font-mono-data text-sm text-zinc-900 focus:outline-none focus:ring-2 ${
+                        birthDigits.length === 8 && !birthIsValid
+                          ? 'border-red-400 focus:ring-red-200'
+                          : 'border-zinc-300 focus:ring-[#A51C20]/25 focus:border-[#A51C20]'
+                      }`}
                     />
+                    {birthDigits.length === 8 && !birthIsValid && (
+                      <p className="text-[11px] mt-1 font-medium text-red-600">
+                        Data inválida — digite dia/mês/ano corretamente
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -842,7 +892,7 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
                       {formatCurrency(form.loanAmount)}
                     </p>
                     <p className="font-mono-data text-zinc-600">
-                      {form.installments}x de {formatCurrency(computedInstallment)}
+                      {form.installments}x de {formatCurrency(computedInstallment)} · Faturas: {form.invoiceDeliveryMethod || 'WhatsApp'}
                     </p>
                   </div>
                   <div>
