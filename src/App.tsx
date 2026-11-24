@@ -29,13 +29,6 @@ import { SignedReceiptView } from './components/SignedReceiptView';
 import { ConsultContractView } from './components/ConsultContractView';
 import { ContractWizard } from './components/ContractWizard';
 import { PanelView } from './components/PanelView';
-import {
-  createLocalSignedContract,
-  decodePortableContract,
-  lookupContractLocally,
-  saveContractLocally,
-} from './lib/portableContract';
-import { localRegisterVisit } from './lib/panelFallback';
 
 type AppView = 'home' | 'consult' | 'receipt' | 'panel';
 
@@ -102,11 +95,9 @@ export default function App() {
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const [compactStrokes, setCompactStrokes] = useState('');
   const [signedResult, setSignedResult] = useState<{
     contract: SignedLoanContract;
     audit: ContractVerificationAudit;
-    portableToken?: string;
   } | null>(null);
 
   const [deepLinkLoading, setDeepLinkLoading] = useState(false);
@@ -159,30 +150,8 @@ export default function App() {
 
     const params = new URLSearchParams(window.location.search);
     const protocolParam = params.get('contrato');
-    const portableParam = params.get('p');
     const tokenParam = params.get('chave');
     const refParam = params.get('ref');
-
-    if (portableParam) {
-      setDeepLinkLoading(true);
-      setDeepLinkError('');
-      decodePortableContract(portableParam)
-        .then((decoded) => {
-          if (!decoded) {
-            throw new Error('Link de contrato inválido ou corrompido.');
-          }
-          setSignedResult({ ...decoded, portableToken: portableParam });
-          setView('receipt');
-        })
-        .catch((err: Error) => {
-          setDeepLinkError(err.message);
-          setView('consult');
-        })
-        .finally(() => {
-          setDeepLinkLoading(false);
-        });
-      return;
-    }
 
     if (protocolParam && tokenParam) {
       setDeepLinkLoading(true);
@@ -206,18 +175,8 @@ export default function App() {
           throw new Error('API_UNAVAILABLE');
         })
         .catch((err: Error) => {
-          const localMatch = lookupContractLocally(protocolParam, { token: tokenParam });
-          if (localMatch) {
-            setSignedResult(localMatch);
-            setView('receipt');
-          } else {
-            setDeepLinkError(
-              err.message === 'API_UNAVAILABLE'
-                ? 'Contrato não encontrado neste dispositivo. Utilize o link completo com QR Code gerado na assinatura.'
-                : err.message
-            );
-            setView('consult');
-          }
+          setDeepLinkError(err.message === 'API_UNAVAILABLE' ? 'Servidor indisponível. Tente novamente.' : err.message);
+          setView('consult');
         })
         .finally(() => {
           setDeepLinkLoading(false);
@@ -254,21 +213,7 @@ export default function App() {
           throw new Error('STATIC_HOST');
         })
         .catch(() => {
-          const localVisit = localRegisterVisit(refParam);
-          if (localVisit.valid && localVisit.agentCode) {
-            setAgentState({
-              status: 'valid',
-              agentId: localVisit.agentId,
-              agentName: localVisit.agentName,
-              agentCode: localVisit.agentCode,
-            });
-            setForm((prev) => ({ ...prev, agentCode: localVisit.agentCode }));
-          } else {
-            setAgentState({
-              status: 'invalid',
-              error: 'Link de atendimento inválido ou desativado.',
-            });
-          }
+          setAgentState({ status: 'invalid', error: 'Servidor indisponível para validar o atendimento. Recarregue e tente novamente.' });
         });
     }
   }, []);
@@ -390,59 +335,27 @@ export default function App() {
 
     setSubmitting(true);
     try {
-      let handledByServer = false;
-      try {
-        const res = await fetch('/api/contracts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(currentFormWithCalculations),
-        });
-        const contentType = res.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          const json = await res.json();
-          if (!res.ok) {
-            setSubmitError(json.error || 'Não foi possível registrar o contrato.');
-            return;
-          }
-          const created = json.contract as SignedLoanContract;
-          const audit = json.audit as ContractVerificationAudit;
-          saveContractLocally(created);
-
-          const nextUrl = `/?contrato=${encodeURIComponent(
-            created.protocol
-          )}&chave=${encodeURIComponent(created.accessToken)}`;
-          window.history.replaceState({}, '', nextUrl);
-
-          setSignedResult({ contract: created, audit });
-          setView('receipt');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-          handledByServer = true;
-        }
-      } catch {
-        // Static Cloudflare Pages fallback
+      const res = await fetch('/api/contracts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentFormWithCalculations),
+      });
+      if (!res.headers.get('content-type')?.includes('application/json')) {
+        throw new Error('Servidor indisponível. Tente novamente.');
       }
-
-      if (!handledByServer) {
-        const { contract, audit, portableToken } = await createLocalSignedContract(
-          currentFormWithCalculations,
-          compactStrokes,
-          {
-            agentId: agentState.agentId,
-            agentName: agentState.agentName,
-            agentCode: agentState.agentCode,
-          }
-        );
-        const nextUrl = `/?contrato=${encodeURIComponent(
-          contract.protocol
-        )}&p=${encodeURIComponent(portableToken)}`;
-        window.history.replaceState({}, '', nextUrl);
-
-        setSignedResult({ contract, audit, portableToken });
-        setView('receipt');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || 'Não foi possível registrar o contrato.');
       }
-    } catch {
-      setSubmitError('Não foi possível finalizar o contrato. Verifique os campos e tente novamente.');
+      const contract = json.contract as SignedLoanContract;
+      const audit = json.audit as ContractVerificationAudit;
+      const params = new URLSearchParams({ contrato: contract.protocol, chave: contract.accessToken });
+      window.history.replaceState({}, '', '/?' + params.toString());
+      setSignedResult({ contract, audit });
+      setView('receipt');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Falha ao registrar o contrato. Tente novamente.');
     } finally {
       setSubmitting(false);
     }
@@ -598,7 +511,6 @@ export default function App() {
           <SignedReceiptView
             contract={signedResult.contract}
             audit={signedResult.audit}
-            portableToken={signedResult.portableToken}
             onStartNewContract={handleStartNewContract}
           />
         ) : view === 'consult' ? (
@@ -851,7 +763,6 @@ export default function App() {
                   customAmountMode={customAmountMode}
                   setCustomAmountMode={setCustomAmountMode}
                   updateField={updateField}
-                  onStrokesChange={setCompactStrokes}
                   onSubmit={handleSubmitContract}
                   submitting={submitting}
                   submitError={submitError}

@@ -24,16 +24,7 @@ import {
   Users,
 } from 'lucide-react';
 import { COMPANY_INFO, formatCurrency } from '../lib/loanTable';
-import {
-  localCreateEmployee,
-  localDeleteEmployee,
-  localGetDashboard,
-  localLogin,
-  localNeedsAdminSetup,
-  localSetupAdmin,
-  localToggleEmployee,
-  sanitizeAgentSlug,
-} from '../lib/panelFallback';
+import { sanitizeAgentSlug } from '../lib/panelFallback';
 import { buildLocalAudit } from '../lib/portableContract';
 import type {
   DashboardPayload,
@@ -60,13 +51,11 @@ const DATE_PRESETS: { id: DatePreset; label: string }[] = [
 export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
   const [token, setToken] = useState<string>('');
   const [user, setUser] = useState<PanelUserPublic | null>(null);
-  const [authMode, setAuthMode] = useState<'loading' | 'setup' | 'login' | 'authenticated'>('loading');
-  const [staticFallbackMode, setStaticFallbackMode] = useState(false);
+  const [authMode, setAuthMode] = useState<'loading' | 'login' | 'authenticated'>('loading');
 
   // Login / Setup inputs
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [adminName, setAdminName] = useState('Administrador Master');
   const [authError, setAuthError] = useState('');
   const [authSubmitting, setAuthSubmitting] = useState(false);
 
@@ -103,15 +92,14 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
         if (!contentType.includes('application/json')) {
           throw new Error('STATIC_HOST');
         }
-        const json = await res.json();
+        if (!res.ok) throw new Error('Servidor indisponível.');
         if (!active) return;
-        setStaticFallbackMode(false);
-        setAuthMode(json.needsAdminSetup ? 'setup' : 'login');
+        setAuthMode('login');
       })
       .catch(() => {
         if (!active) return;
-        setStaticFallbackMode(true);
-        setAuthMode(localNeedsAdminSetup() ? 'setup' : 'login');
+        setAuthMode('login');
+        setAuthError('Servidor indisponível. Aguarde e tente entrar novamente.');
       });
     return () => {
       active = false;
@@ -121,20 +109,13 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
   const loadDashboard = useCallback(
     async (
       activeToken: string,
-      activeUser: PanelUserPublic,
       currentPreset: DatePreset,
       start: string,
       end: string,
-      agentFilter: string,
-      isStatic: boolean
+      agentFilter: string
     ) => {
       setDashLoading(true);
       try {
-        if (isStatic || activeToken.startsWith('local:')) {
-          const payload = localGetDashboard(activeUser, currentPreset, start, end, agentFilter);
-          setDashboard(payload);
-          return;
-        }
         const qs = new URLSearchParams({
           preset: currentPreset,
           tzOffset: String(new Date().getTimezoneOffset()),
@@ -163,9 +144,9 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
 
   useEffect(() => {
     if (authMode === 'authenticated' && token && user) {
-      void loadDashboard(token, user, preset, customStart, customEnd, selectedAgentId, staticFallbackMode);
+      void loadDashboard(token, preset, customStart, customEnd, selectedAgentId);
     }
-  }, [authMode, token, user, preset, customStart, customEnd, selectedAgentId, staticFallbackMode, loadDashboard]);
+  }, [authMode, token, user, preset, customStart, customEnd, selectedAgentId, loadDashboard]);
 
   // Generate QR code for current user's unique link
   const myAgentLink = user ? `${window.location.origin}/?ref=${encodeURIComponent(user.agentCode)}` : '';
@@ -176,72 +157,23 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
       .catch(() => setMyQrUrl(''));
   }, [showMyQr, myAgentLink]);
 
-  const handleSetupAdmin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError('');
-    setAuthSubmitting(true);
-    try {
-      if (!staticFallbackMode) {
-        const res = await fetch('/api/auth/setup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password, name: adminName }),
-        });
-        const contentType = res.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          const json = await res.json();
-          if (!res.ok) {
-            setAuthError(json.error || 'Erro ao configurar administrador.');
-            return;
-          }
-          setToken(json.token);
-          setUser(json.user);
-          setAuthMode('authenticated');
-          return;
-        }
-      }
-
-      setStaticFallbackMode(true);
-      const localRes = await localSetupAdmin(username, password, adminName);
-      setToken(localRes.token);
-      setUser(localRes.user);
-      setAuthMode('authenticated');
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : 'Erro ao configurar acesso.');
-    } finally {
-      setAuthSubmitting(false);
-    }
-  };
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
     setAuthSubmitting(true);
     try {
-      if (!staticFallbackMode) {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password }),
-        });
-        const contentType = res.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          const json = await res.json();
-          if (!res.ok) {
-            setAuthError(json.error || 'Usuário ou senha incorretos.');
-            return;
-          }
-          setToken(json.token);
-          setUser(json.user);
-          setAuthMode('authenticated');
-          return;
-        }
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!res.headers.get('content-type')?.includes('application/json')) {
+        throw new Error('Servidor indisponível. Tente novamente.');
       }
-
-      setStaticFallbackMode(true);
-      const localRes = await localLogin(username, password);
-      setToken(localRes.token);
-      setUser(localRes.user);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Usuário ou senha incorretos.');
+      setToken(json.token);
+      setUser(json.user);
       setAuthMode('authenticated');
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Erro ao entrar no painel.');
@@ -267,27 +199,23 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
     setEmpSubmitting(true);
     try {
       const slug = sanitizeAgentSlug(empCode || empUsername || empName);
-      if (!staticFallbackMode && !token.startsWith('local:')) {
-        const res = await fetch('/api/panel/employees', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            name: empName,
-            username: empUsername,
-            password: empPassword,
-            agentCode: slug,
-          }),
-        });
-        const json = await res.json();
-        if (!res.ok) {
-          setEmpError(json.error || 'Não foi possível criar funcionário.');
-          return;
-        }
-      } else {
-        await localCreateEmployee(empName, empUsername, empPassword, slug);
+      const res = await fetch('/api/panel/employees', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: empName,
+          username: empUsername,
+          password: empPassword,
+          agentCode: slug,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setEmpError(json.error || 'Não foi possível criar funcionário.');
+        return;
       }
 
       setEmpSuccess(`Funcionário ${empName} criado com link único ?ref=${slug}`);
@@ -297,7 +225,7 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
       setEmpCode('');
       setEmpCodeManual(false);
       if (user) {
-        void loadDashboard(token, user, preset, customStart, customEnd, selectedAgentId, staticFallbackMode);
+        void loadDashboard(token, preset, customStart, customEnd, selectedAgentId);
       }
     } catch (err) {
       setEmpError(err instanceof Error ? err.message : 'Erro ao criar funcionário.');
@@ -307,35 +235,35 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
   };
 
   const handleToggleEmployee = async (empId: string, nextActive: boolean) => {
-    if (!staticFallbackMode && !token.startsWith('local:')) {
-      await fetch(`/api/panel/employees/${encodeURIComponent(empId)}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ active: nextActive }),
-      });
-    } else {
-      localToggleEmployee(empId, nextActive);
+    const res = await fetch(`/api/panel/employees/${encodeURIComponent(empId)}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ active: nextActive }),
+    });
+    if (!res.ok) {
+      setEmpError('Não foi possível alterar o funcionário. Tente novamente.');
+      return;
     }
     if (user) {
-      void loadDashboard(token, user, preset, customStart, customEnd, selectedAgentId, staticFallbackMode);
+      void loadDashboard(token, preset, customStart, customEnd, selectedAgentId);
     }
   };
 
   const handleDeleteEmployee = async (empId: string) => {
-    if (!staticFallbackMode && !token.startsWith('local:')) {
-      await fetch(`/api/panel/employees/${encodeURIComponent(empId)}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-    } else {
-      localDeleteEmployee(empId);
+    const res = await fetch(`/api/panel/employees/${encodeURIComponent(empId)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      setEmpError('Não foi possível alterar o funcionário. Tente novamente.');
+      return;
     }
     if (selectedAgentId === empId) setSelectedAgentId('');
     if (user) {
-      void loadDashboard(token, user, preset, customStart, customEnd, selectedAgentId, staticFallbackMode);
+      void loadDashboard(token, preset, customStart, customEnd, selectedAgentId);
     }
   };
 
@@ -363,8 +291,7 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
   }
 
   // First-run Setup or Login screen
-  if (authMode === 'setup' || authMode === 'login') {
-    const isSetup = authMode === 'setup';
+  if (authMode === 'login') {
     return (
       <div className="min-h-screen bg-[#F7F7F8] flex flex-col justify-center px-4 py-10">
         <div className="max-w-md w-full mx-auto space-y-6">
@@ -382,32 +309,15 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
               <KeyRound className="w-5 h-5 text-[#A51C20] shrink-0 mt-0.5" />
               <div>
                 <h1 className="text-lg font-bold text-zinc-900">
-                  {isSetup ? 'Configuração Inicial do Admin Master' : 'Acesso ao Painel'}
+                  Acesso ao Painel
                 </h1>
                 <p className="text-xs text-zinc-600 mt-0.5">
-                  {isSetup
-                    ? 'Defina o usuário e a senha do Administrador Master para liberar o gerenciamento de funcionários e links.'
-                    : 'Entre com seu usuário e senha de Administrador Master ou Consultor autorizado.'}
+                  {'Entre com seu usuário e senha de Administrador Master ou Consultor autorizado.'}
                 </p>
               </div>
             </div>
 
-            <form onSubmit={isSetup ? handleSetupAdmin : handleLogin} className="space-y-4">
-              {isSetup && (
-                <div>
-                  <label htmlFor="admin-name" className="block text-xs font-semibold text-zinc-700 mb-1.5">
-                    Nome de Exibição
-                  </label>
-                  <input
-                    id="admin-name"
-                    type="text"
-                    required
-                    value={adminName}
-                    onChange={(e) => setAdminName(e.target.value)}
-                    className="w-full h-11 px-3.5 rounded-xl border border-zinc-300 bg-white text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-[#A51C20]/25 focus:border-[#A51C20]"
-                  />
-                </div>
-              )}
+            <form onSubmit={handleLogin} className="space-y-4">
 
               <div>
                 <label htmlFor="login-user" className="block text-xs font-semibold text-zinc-700 mb-1.5">
@@ -433,7 +343,7 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
                   id="login-pass"
                   type="password"
                   required
-                  autoComplete={isSetup ? 'new-password' : 'current-password'}
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Digite sua senha"
@@ -458,8 +368,6 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Verificando...
                   </>
-                ) : isSetup ? (
-                  'Salvar Admin Master e Entrar'
                 ) : (
                   'Entrar no Painel'
                 )}
@@ -534,7 +442,7 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
               type="button"
               onClick={() =>
                 user &&
-                loadDashboard(token, user, preset, customStart, customEnd, selectedAgentId, staticFallbackMode)
+                loadDashboard(token, preset, customStart, customEnd, selectedAgentId)
               }
               className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[40px] rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-semibold text-zinc-700 cursor-pointer"
             >
@@ -554,12 +462,6 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
-        {staticFallbackMode && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs sm:text-sm text-amber-900">
-            <strong>Modo Navegador Local Ativo:</strong> este domínio está operando sem servidor backend conectado. Os registros ficam salvos neste navegador; para sincronizar acessos e contratos entre vários celulares e computadores em tempo real, hospede com servidor Node ou conecte um banco de dados na nuvem.
-          </div>
-        )}
-
         {/* Meu Link Único de Atendimento */}
         <section className="rounded-2xl border border-zinc-200 bg-white p-5 sm:p-6">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">

@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Search, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
 import { formatCPF, isValidCPF } from '../lib/loanTable';
 import type { ContractVerificationAudit, SignedLoanContract } from '../types/contract';
-import { decodePortableContract, lookupContractLocally } from '../lib/portableContract';
 import { SignedReceiptView } from './SignedReceiptView';
 
 interface ConsultContractViewProps {
@@ -20,106 +19,45 @@ export const ConsultContractView: React.FC<ConsultContractViewProps> = ({
   const [result, setResult] = useState<{
     contract: SignedLoanContract;
     audit: ContractVerificationAudit;
-    portableToken?: string;
   } | null>(null);
 
   const handleLookup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    // If user pasted a direct verification link
+    let params: URLSearchParams;
     if (linkInput.trim()) {
       try {
-        const parsedUrl = new URL(linkInput.trim(), window.location.origin);
-        const pParam = parsedUrl.searchParams.get('p');
-        const protoParam = parsedUrl.searchParams.get('contrato');
-        const keyParam = parsedUrl.searchParams.get('chave');
-
-        if (pParam) {
-          const decoded = await decodePortableContract(pParam);
-          if (decoded) {
-            setResult({ ...decoded, portableToken: pParam });
-            return;
-          }
-        }
-        if (protoParam && keyParam) {
-          setLoading(true);
-          try {
-            const res = await fetch(
-              `/api/contracts/lookup?protocol=${encodeURIComponent(protoParam)}&token=${encodeURIComponent(keyParam)}`
-            );
-            const contentType = res.headers.get('content-type') || '';
-            if (res.ok && contentType.includes('application/json')) {
-              const json = await res.json();
-              setResult({ contract: json.contract, audit: json.audit });
-              return;
-            }
-          } catch {
-            // Fall through to local lookup
-          } finally {
-            setLoading(false);
-          }
-          const localMatch = lookupContractLocally(protoParam, { token: keyParam });
-          if (localMatch) {
-            setResult(localMatch);
-            return;
-          }
-        }
-        setError('Link de verificação inválido ou contrato não encontrado.');
-        return;
+        const url = new URL(linkInput.trim(), window.location.origin);
+        const protocol = url.searchParams.get('contrato');
+        const token = url.searchParams.get('chave');
+        if (!protocol || !token) throw new Error('Link inválido');
+        params = new URLSearchParams({ protocol, token });
       } catch {
-        setError('Formato de link inválido. Cole o link completo recebido pelo WhatsApp.');
+        setError('Cole um link de verificação emitido pelo servidor.');
         return;
       }
-    }
-
-    const cleanProtocol = protocol.trim().toUpperCase();
-    if (!cleanProtocol) {
-      setError('Informe o número do protocolo do contrato (ex.: RP-2026-123456).');
-      return;
-    }
-    if (!isValidCPF(cpf)) {
-      setError('Informe um CPF válido para conferir a titularidade do contrato.');
-      return;
+    } else {
+      const cleanProtocol = protocol.trim().toUpperCase();
+      if (!cleanProtocol || !isValidCPF(cpf)) {
+        setError('Informe o número do protocolo e um CPF válido.');
+        return;
+      }
+      params = new URLSearchParams({ protocol: cleanProtocol, cpf });
     }
 
     setLoading(true);
     try {
-      const params = new URLSearchParams({
-        protocol: cleanProtocol,
-        cpf,
-      });
-      const res = await fetch(`/api/contracts/lookup?${params.toString()}`);
-      const contentType = res.headers.get('content-type') || '';
-
-      if (contentType.includes('application/json')) {
-        const json = await res.json();
-        if (res.ok) {
-          setResult({ contract: json.contract, audit: json.audit });
-          return;
-        }
-        if (res.status === 403 || res.status === 400) {
-          setError(json.error || 'Dados não conferem com o contrato.');
-          setResult(null);
-          return;
-        }
+      const res = await fetch('/api/contracts/lookup?' + params.toString());
+      if (!res.headers.get('content-type')?.includes('application/json')) {
+        throw new Error('Servidor indisponível. Tente novamente.');
       }
-
-      // Static hosting fallback (Cloudflare Pages)
-      const localFound = lookupContractLocally(cleanProtocol, { cpf });
-      if (localFound) {
-        setResult(localFound);
-      } else {
-        setError('Contrato não encontrado neste dispositivo. Para consultar contratos assinados em outro aparelho na hospedagem estática, utilize o link completo ou QR Code enviado pelo WhatsApp.');
-        setResult(null);
-      }
-    } catch {
-      const localFound = lookupContractLocally(cleanProtocol, { cpf });
-      if (localFound) {
-        setResult(localFound);
-      } else {
-        setError('Não foi possível localizar este contrato. Verifique o protocolo e CPF ou use o link do WhatsApp.');
-      }
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Contrato não encontrado.');
+      setResult({ contract: json.contract, audit: json.audit });
+    } catch (err) {
+      setResult(null);
+      setError(err instanceof Error ? err.message : 'Não foi possível consultar o contrato.');
     } finally {
       setLoading(false);
     }
@@ -140,7 +78,6 @@ export const ConsultContractView: React.FC<ConsultContractViewProps> = ({
         <SignedReceiptView
           contract={result.contract}
           audit={result.audit}
-          portableToken={result.portableToken}
           onStartNewContract={onStartNewContract}
         />
       </div>

@@ -38,7 +38,7 @@ interface ContractWizardProps {
   customAmountMode: boolean;
   setCustomAmountMode: React.Dispatch<React.SetStateAction<boolean>>;
   updateField: <K extends keyof LoanContractInput>(key: K, value: LoanContractInput[K]) => void;
-  onStrokesChange: (compact: string) => void;
+  onStrokesChange?: (compact: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   submitting: boolean;
   submitError: string;
