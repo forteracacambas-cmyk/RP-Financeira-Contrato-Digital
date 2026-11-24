@@ -18,12 +18,14 @@ interface SignedReceiptViewProps {
   contract: SignedLoanContract;
   audit: ContractVerificationAudit;
   onStartNewContract: () => void;
+  closeLabel?: string;
 }
 
 export const SignedReceiptView: React.FC<SignedReceiptViewProps> = ({
   contract,
   audit,
   onStartNewContract,
+  closeLabel = 'Novo Contrato',
 }) => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
@@ -140,10 +142,10 @@ export const SignedReceiptView: React.FC<SignedReceiptViewProps> = ({
             <button
               type="button"
               onClick={onStartNewContract}
-              className="inline-flex items-center gap-2 px-4 py-2.5 min-h-[44px] text-xs font-semibold rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 transition-colors whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-2 px-4 py-2.5 min-h-[44px] text-xs font-semibold rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <FilePlus2 className="w-4 h-4" />
-              Novo Contrato
+              {closeLabel}
             </button>
           </div>
         </div>

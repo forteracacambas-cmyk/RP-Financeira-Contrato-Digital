@@ -501,6 +501,10 @@ export function createApi() {
     if (!requestedSlug || requestedSlug.length < 2) {
       return res.status(400).json({ error: 'Código do link inválido.' });
     }
+    const reservedAdmin = (req.config.ADMIN_USERNAME || 'coringa').trim().toLowerCase();
+    if (username === reservedAdmin) {
+      return res.status(409).json({ error: 'Este login é reservado ao Administrador Master.' });
+    }
     const newEmployee: StoredUser = {
       id: crypto.randomUUID(),
       username,

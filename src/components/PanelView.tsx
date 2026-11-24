@@ -128,6 +128,9 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
         if (res.status === 401) {
           setToken('');
           setUser(null);
+          setDashboard(null);
+          setSelectedAgentId('');
+          setSelectedContract(null);
           setAuthMode('login');
           return;
         }
@@ -172,6 +175,13 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
       }
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Usuário ou senha incorretos.');
+      setSelectedAgentId('');
+      setDashboard(null);
+      setSelectedContract(null);
+      setShowMyQr(false);
+      setMyQrUrl('');
+      setEmpError('');
+      setEmpSuccess('');
       setToken(json.token);
       setUser(json.user);
       setAuthMode('authenticated');
@@ -187,6 +197,13 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
     setUser(null);
     setDashboard(null);
     setSelectedContract(null);
+    setSelectedAgentId('');
+    setShowMyQr(false);
+    setMyQrUrl('');
+    setCopiedCode('');
+    setEmpError('');
+    setEmpSuccess('');
+    setAuthError('');
     setUsername('');
     setPassword('');
     setAuthMode('login');
@@ -414,6 +431,7 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
             contract={selectedContract}
             audit={buildLocalAudit(selectedContract, true)}
             onStartNewContract={() => setSelectedContract(null)}
+            closeLabel="Voltar para o Painel"
           />
         </main>
       </div>
@@ -433,7 +451,7 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
               <BrandLogo size="sm" />
             </button>
             <span className="hidden sm:inline text-xs text-zinc-500 truncate">
-              Painel {isAdmin ? 'Admin Master' : 'do Consultor'} · {user?.name}
+              {isAdmin ? `Painel Admin Master · ${user?.name}` : `Meu Painel Individual · ${user?.name}`}
             </span>
           </div>
 
@@ -618,13 +636,17 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
         {/* KPIs do Período */}
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="rounded-2xl border border-zinc-200 bg-white p-5">
-            <p className="text-xs font-semibold text-zinc-500">Acessos no Link</p>
+            <p className="text-xs font-semibold text-zinc-500">
+              {isAdmin ? 'Acessos no Link' : 'Meus Acessos'}
+            </p>
             <p className="font-mono-data text-2xl sm:text-3xl font-extrabold text-zinc-900 mt-1">
               {dashboard?.totalVisits ?? 0}
             </p>
           </div>
           <div className="rounded-2xl border border-zinc-200 bg-white p-5">
-            <p className="text-xs font-semibold text-zinc-500">Contratos Assinados</p>
+            <p className="text-xs font-semibold text-zinc-500">
+              {isAdmin ? 'Contratos Assinados' : 'Meus Contratos'}
+            </p>
             <p className="font-mono-data text-2xl sm:text-3xl font-extrabold text-[#A51C20] mt-1">
               {dashboard?.totalContracts ?? 0}
             </p>
@@ -636,7 +658,9 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
             </p>
           </div>
           <div className="rounded-2xl border border-zinc-200 bg-white p-5">
-            <p className="text-xs font-semibold text-zinc-500">Volume Solicitado</p>
+            <p className="text-xs font-semibold text-zinc-500">
+              {isAdmin ? 'Volume Solicitado' : 'Meu Volume'}
+            </p>
             <p className="font-mono-data text-xl sm:text-2xl font-extrabold text-zinc-900 mt-1">
               {formatCurrency(dashboard?.totalVolume ?? 0)}
             </p>
@@ -802,37 +826,49 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
                         {formatCurrency(emp.totalVolume)}
                       </td>
                       <td className="py-3.5 px-5 text-right">
-                        {emp.role !== 'admin' ? (
-                          <div className="inline-flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleEmployee(emp.id, !emp.active)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-medium text-zinc-700 cursor-pointer"
-                            >
-                              {emp.active ? (
-                                <>
-                                  <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
-                                  Pausar
-                                </>
-                              ) : (
-                                <>
-                                  <PlayCircle className="w-3.5 h-3.5 text-emerald-600" />
-                                  Ativar
-                                </>
-                              )}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteEmployee(emp.id)}
-                              className="p-1.5 rounded-lg border border-zinc-200 hover:bg-red-50 text-red-600 cursor-pointer"
-                              title="Excluir funcionário"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-zinc-400">Principal</span>
-                        )}
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedAgentId((prev) => (prev === emp.id ? '' : emp.id))}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer ${
+                              selectedAgentId === emp.id
+                                ? 'border-[#A51C20] bg-red-50 text-[#A51C20]'
+                                : 'border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700'
+                            }`}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            {selectedAgentId === emp.id ? 'Mostrando' : 'Ver clientes'}
+                          </button>
+                          {emp.role !== 'admin' && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleEmployee(emp.id, !emp.active)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-medium text-zinc-700 cursor-pointer"
+                              >
+                                {emp.active ? (
+                                  <>
+                                    <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
+                                    Pausar
+                                  </>
+                                ) : (
+                                  <>
+                                    <PlayCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                    Ativar
+                                  </>
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteEmployee(emp.id)}
+                                className="p-1.5 rounded-lg border border-zinc-200 hover:bg-red-50 text-red-600 cursor-pointer"
+                                title="Excluir funcionário"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -849,10 +885,12 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
               <FileText className="w-5 h-5 text-[#A51C20]" />
               <div>
                 <h2 className="text-lg font-bold text-zinc-900">
-                  Contratos Preenchidos e Assinados
+                  {isAdmin ? 'Contratos Preenchidos e Assinados' : 'Meus Clientes e Contratos'}
                 </h2>
                 <p className="text-xs text-zinc-600 mt-0.5">
-                  Todos os clientes que preencheram e assinaram pelo link no período selecionado.
+                  {isAdmin
+                    ? 'Clientes que preencheram e assinaram no período selecionado.'
+                    : 'Somente os clientes atendidos pelo seu link único — seus dados não são misturados com os de outros funcionários.'}
                 </p>
               </div>
             </div>
@@ -867,14 +905,14 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[880px] text-left border-collapse">
+              <table className="w-full min-w-[820px] text-left border-collapse">
                 <thead>
                   <tr className="border-b border-zinc-200 text-xs font-bold text-zinc-500 bg-zinc-50/70">
                     <th className="py-3.5 px-5">Protocolo / Data</th>
                     <th className="py-3.5 px-4">Cliente e CPF</th>
                     <th className="py-3.5 px-4">Valor / Plano</th>
                     <th className="py-3.5 px-4">Recebimento (Banco / PIX)</th>
-                    <th className="py-3.5 px-4">Consultor</th>
+                    {isAdmin && <th className="py-3.5 px-4">Funcionário</th>}
                     <th className="py-3.5 px-5 text-right">Conferência</th>
                   </tr>
                 </thead>
@@ -913,12 +951,14 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
                           PIX ({c.pixKeyType}): {c.pixKey}
                         </p>
                       </td>
-                      <td className="py-3.5 px-4 text-xs">
-                        <p className="font-semibold text-zinc-900">{c.agentName || 'Direto'}</p>
-                        <p className="font-mono-data text-zinc-500">
-                          {c.agentCode ? `?ref=${c.agentCode}` : '—'}
-                        </p>
-                      </td>
+                      {isAdmin && (
+                        <td className="py-3.5 px-4 text-xs">
+                          <p className="font-semibold text-zinc-900">{c.agentName || 'Direto'}</p>
+                          <p className="font-mono-data text-zinc-500">
+                            {c.agentCode ? `?ref=${c.agentCode}` : '—'}
+                          </p>
+                        </td>
+                      )}
                       <td className="py-3.5 px-5 text-right">
                         <div className="inline-flex flex-col items-end gap-1.5">
                           <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">
