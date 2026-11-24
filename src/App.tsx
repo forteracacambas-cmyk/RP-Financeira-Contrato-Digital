@@ -2,11 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   ArrowRight,
-  FileCheck2,
-  Lock,
   Loader2,
   Menu,
-  Search,
   ShieldCheck,
   X,
 } from 'lucide-react';
@@ -118,6 +115,7 @@ export default function App() {
   const contractFormRef = useRef<HTMLElement | null>(null);
   const tableSectionRef = useRef<HTMLDivElement | null>(null);
   const simulatorSectionRef = useRef<HTMLElement | null>(null);
+  const institutionalSectionRef = useRef<HTMLElement | null>(null);
 
   // Sync browser back/forward navigation
   useEffect(() => {
@@ -275,13 +273,6 @@ export default function App() {
     }
   }, []);
 
-  const navigateToPanel = () => {
-    window.history.pushState({}, '', '/painel');
-    setView('panel');
-    setMobileNavOpen(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
   const navigateToSite = () => {
     window.history.pushState({}, '', '/');
     setView('home');
@@ -310,7 +301,7 @@ export default function App() {
     }
   };
 
-  const scrollToSection = (section: 'simulator' | 'table' | 'contract') => {
+  const scrollToSection = (section: 'simulator' | 'table' | 'institutional' | 'contract') => {
     if (view === 'panel') {
       window.history.pushState({}, '', '/');
     }
@@ -321,6 +312,8 @@ export default function App() {
         simulatorSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
       } else if (section === 'table') {
         tableSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+      } else if (section === 'institutional') {
+        institutionalSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
       } else {
         contractFormRef.current?.scrollIntoView({ behavior: 'smooth' });
       }
@@ -476,7 +469,7 @@ export default function App() {
             <BrandLogo size="md" />
           </button>
 
-          {/* Zone 2: 4 Single-line Nav Links */}
+          {/* Zone 2: Single-line Nav Links */}
           <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-zinc-600">
             <button
               type="button"
@@ -490,28 +483,30 @@ export default function App() {
               onClick={() => scrollToSection('table')}
               className="hover:text-zinc-900 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
-              Tabela Oficial
+              Tabela de Parcelas
             </button>
             <button
               type="button"
-              onClick={() => {
-                setView('consult');
-                setMobileNavOpen(false);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className={`hover:text-zinc-900 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                view === 'consult' ? 'text-[#A51C20] font-semibold' : ''
-              }`}
-            >
-              Consultar Contrato
-            </button>
-            <button
-              type="button"
-              onClick={navigateToPanel}
+              onClick={() => scrollToSection('institutional')}
               className="hover:text-zinc-900 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
-              Painel
+              Crédito Pessoal
             </button>
+            {hasValidAgentLink && (
+              <button
+                type="button"
+                onClick={() => {
+                  setView('consult');
+                  setMobileNavOpen(false);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className={`hover:text-zinc-900 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  view === 'consult' ? 'text-[#A51C20] font-semibold' : ''
+                }`}
+              >
+                Consultar Contrato
+              </button>
+            )}
           </nav>
 
           {/* Zone 3: 1 Primary CTA + mobile toggle */}
@@ -527,13 +522,10 @@ export default function App() {
             ) : (
               <button
                 type="button"
-                onClick={() => {
-                  setView('consult');
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
+                onClick={() => scrollToSection('table')}
                 className="hidden sm:inline-flex items-center justify-center px-4 py-2 min-h-[40px] text-xs font-semibold text-white bg-[#A51C20] hover:bg-[#8B1519] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
-                Consultar Contrato
+                Ver Tabela Oficial
               </button>
             )}
             <button
@@ -562,25 +554,27 @@ export default function App() {
               onClick={() => scrollToSection('table')}
               className="w-full text-left px-3 py-3 text-sm font-medium text-zinc-800 rounded-lg hover:bg-zinc-50"
             >
-              Tabela Oficial
+              Tabela de Parcelas
             </button>
             <button
               type="button"
-              onClick={() => {
-                setView('consult');
-                setMobileNavOpen(false);
-              }}
+              onClick={() => scrollToSection('institutional')}
               className="w-full text-left px-3 py-3 text-sm font-medium text-zinc-800 rounded-lg hover:bg-zinc-50"
             >
-              Consultar Contrato
+              Crédito Pessoal
             </button>
-            <button
-              type="button"
-              onClick={navigateToPanel}
-              className="w-full text-left px-3 py-3 text-sm font-semibold text-[#A51C20] rounded-lg hover:bg-zinc-50"
-            >
-              Acessar Painel
-            </button>
+            {hasValidAgentLink && (
+              <button
+                type="button"
+                onClick={() => {
+                  setView('consult');
+                  setMobileNavOpen(false);
+                }}
+                className="w-full text-left px-3 py-3 text-sm font-medium text-zinc-800 rounded-lg hover:bg-zinc-50"
+              >
+                Consultar Contrato
+              </button>
+            )}
           </div>
         )}
       </header>
@@ -672,13 +666,13 @@ export default function App() {
                   <h1 className="mt-4 text-3xl sm:text-4xl lg:text-[2.75rem] font-extrabold tracking-tight text-zinc-900 leading-[1.12]">
                     {hasValidAgentLink
                       ? 'Contrate e assine seu empréstimo pessoal com validade jurídica'
-                      : 'Contrato digital de empréstimo pessoal com transparência e segurança jurídica'}
+                      : 'Empréstimo pessoal com parcelas fixas e taxa de 1,35% ao mês'}
                   </h1>
 
                   <p className="mt-4 text-base text-zinc-600 leading-relaxed max-w-2xl">
                     {hasValidAgentLink
                       ? 'Simule pela tabela oficial da RP Financeira, preencha seus dados em 4 etapas simples com busca automática de endereço por CEP, assine na tela e gere seu QR Code para consultar e enviar no WhatsApp.'
-                      : 'Na RP Financeira, cada contratação de crédito pessoal é formalizada por meio de instrumento particular eletrônico com taxa fixa de 1,35% ao mês, assinatura manuscrita digital, certificado SHA-256 e verificação instantânea via QR Code.'}
+                      : 'A RP Financeira atua com crédito pessoal transparente, valores de R$ 5 mil a R$ 50 mil e planos de pagamento em 12x até 120x. Confira nossa tabela oficial de parcelas e simule suas condições.'}
                   </p>
                 </div>
 
@@ -701,10 +695,10 @@ export default function App() {
                   </div>
                   <div>
                     <p className="font-mono-data text-xl font-bold text-zinc-900">
-                      Lei 14.063/20
+                      Sem Taxa Prévia
                     </p>
                     <p className="text-xs text-zinc-600 mt-0.5">
-                      Assinatura digital autenticada por QR Code
+                      Atendimento transparente e sem depósito antecipado
                     </p>
                   </div>
                 </div>
@@ -836,11 +830,11 @@ export default function App() {
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setView('consult')}
+                      onClick={() => scrollToSection('table')}
                       className="w-full h-12 px-4 rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer"
                     >
-                      <Search className="w-4 h-4" />
-                      Consultar Contrato Assinado
+                      Comparar Planos na Tabela Oficial
+                      <ArrowRight className="w-4 h-4" />
                     </button>
                   )}
                 </div>
@@ -873,78 +867,55 @@ export default function App() {
                 selectedAmount={form.loanAmount}
                 selectedInstallments={form.installments}
                 onSelectPlan={handleSelectTablePlan}
+                contractEnabled={hasValidAgentLink}
               />
             </div>
 
-            {/* Seção Institucional sobre como funciona o contrato (exibida na URL principal) */}
+            {/* Seção Institucional sobre Empréstimo Pessoal (exibida na URL principal) */}
             {!hasValidAgentLink && (
-              <section className="rounded-2xl border border-zinc-200 bg-white p-6 sm:p-8 space-y-6">
+              <section
+                ref={institutionalSectionRef}
+                className="rounded-2xl border border-zinc-200 bg-white p-6 sm:p-8 space-y-6 scroll-mt-24"
+              >
                 <div className="border-b border-zinc-200 pb-4">
                   <h2 className="text-xl sm:text-2xl font-bold text-zinc-900 tracking-tight">
-                    Como funciona o Contrato Digital de Empréstimo Pessoal
+                    Soluções em Empréstimo Pessoal — {COMPANY_INFO.name}
                   </h2>
                   <p className="text-sm text-zinc-600 mt-1">
-                    Para segurança dos clientes e prevenção contra fraudes, a formalização de novos contratos é realizada somente através do link exclusivo enviado por um consultor autorizado da {COMPANY_INFO.name}.
+                    Crédito pessoal planejado para ajudar você a realizar projetos, organizar contas ou quitar dívidas com parcelas que cabem no seu orçamento.
                   </p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                   <div className="p-5 rounded-xl border border-zinc-200 bg-zinc-50/70 space-y-2">
-                    <p className="font-mono-data text-xs font-bold text-[#A51C20]">01. Atendimento Autorizado</p>
-                    <h3 className="text-base font-bold text-zinc-900">Link Único do Consultor</h3>
+                    <p className="font-mono-data text-xs font-bold text-[#A51C20]">01. Valores Flexíveis</p>
+                    <h3 className="text-base font-bold text-zinc-900">De R$ 5 Mil a R$ 50 Mil</h3>
                     <p className="text-sm text-zinc-600 leading-relaxed">
-                      Cada consultor cadastrado gera seu link individual para atendimento. Ao abrir o link, o contrato é liberado em 4 etapas guiadas com validação de CPF e busca automática de endereço via CEP.
+                      Linhas de empréstimo pessoal estruturadas para diferentes necessidades financeiras, com clareza total sobre o valor liberado e o plano escolhido.
                     </p>
                   </div>
 
                   <div className="p-5 rounded-xl border border-zinc-200 bg-zinc-50/70 space-y-2">
-                    <p className="font-mono-data text-xs font-bold text-[#A51C20]">02. Validade Jurídica</p>
-                    <h3 className="text-base font-bold text-zinc-900">Cláusulas e Assinatura Online</h3>
+                    <p className="font-mono-data text-xs font-bold text-[#A51C20]">02. Parcelas Fixas</p>
+                    <h3 className="text-base font-bold text-zinc-900">Prazos de 12x até 120x</h3>
                     <p className="text-sm text-zinc-600 leading-relaxed">
-                      O cliente confere todas as cláusulas do contrato, taxas prefixadas de {COMPANY_INFO.monthlyRatePercent.toFixed(2).replace('.', ',')}% a.m., dados bancários/PIX de mesma titularidade e assina na tela do dispositivo.
+                      Taxa remuneratória fixa de {COMPANY_INFO.monthlyRatePercent.toFixed(2).replace('.', ',')}% ao mês em toda a operação, garantindo previsibilidade do início ao fim do parcelamento.
                     </p>
                   </div>
 
                   <div className="p-5 rounded-xl border border-zinc-200 bg-zinc-50/70 space-y-2">
-                    <p className="font-mono-data text-xs font-bold text-[#A51C20]">03. Autenticação Instantânea</p>
-                    <h3 className="text-base font-bold text-zinc-900">QR Code e Consulta no WhatsApp</h3>
+                    <p className="font-mono-data text-xs font-bold text-[#A51C20]">03. Segurança e Sigilo</p>
+                    <h3 className="text-base font-bold text-zinc-900">Atendimento Transparente</h3>
                     <p className="text-sm text-zinc-600 leading-relaxed">
-                      Após a assinatura, o sistema emite um protocolo, selo criptográfico SHA-256 e QR Code com link direto para encaminhar no WhatsApp e verificar se o contrato foi devidamente assinado.
+                      A {COMPANY_INFO.name} (CNPJ {COMPANY_INFO.cnpj}) preza pelo sigilo dos seus dados conforme a LGPD e não solicita depósitos antecipados para liberação de crédito.
                     </p>
-                  </div>
-                </div>
-
-                <div className="pt-2 flex flex-wrap items-center justify-between gap-4 border-t border-zinc-200">
-                  <div className="flex items-center gap-2 text-xs text-zinc-500">
-                    <Lock className="w-4 h-4 text-zinc-400" />
-                    <span>Contratação bloqueada fora de links autorizados para proteção antifraude.</span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setView('consult');
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      className="inline-flex items-center gap-2 px-4 py-2.5 min-h-[42px] rounded-xl border border-zinc-300 bg-white hover:bg-zinc-50 text-xs font-semibold text-zinc-800 cursor-pointer"
-                    >
-                      <FileCheck2 className="w-4 h-4 text-[#A51C20]" />
-                      Consultar Contrato Existente
-                    </button>
-                    <button
-                      type="button"
-                      onClick={navigateToPanel}
-                      className="inline-flex items-center gap-2 px-4 py-2.5 min-h-[42px] rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold cursor-pointer"
-                    >
-                      Acesso ao Painel (/painel)
-                    </button>
                   </div>
                 </div>
               </section>
             )}
 
-            {/* Selos de Autenticação Institucionais */}
-            <AuthenticationSeals />
+            {/* Selos de Autenticação (exibidos durante a contratação) */}
+            {hasValidAgentLink && <AuthenticationSeals />}
           </>
         )}
       </main>
@@ -957,34 +928,36 @@ export default function App() {
               {COMPANY_INFO.legalName} · CNPJ {COMPANY_INFO.cnpj}
             </p>
             <p className="mt-1">
-              Contratação eletrônica protegida conforme Lei nº 14.063/2020 e LGPD (Lei nº 13.709/2018).
+              Crédito pessoal com transparência e proteção de dados conforme a LGPD (Lei nº 13.709/2018).
             </p>
           </div>
           <div className="flex items-center gap-5">
             <button
               type="button"
+              onClick={() => scrollToSection('simulator')}
+              className="hover:text-zinc-900 transition-colors cursor-pointer"
+            >
+              Simulador
+            </button>
+            <button
+              type="button"
               onClick={() => scrollToSection('table')}
               className="hover:text-zinc-900 transition-colors cursor-pointer"
             >
-              Tabela de Taxas
+              Tabela de Parcelas
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                setView('consult');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="hover:text-zinc-900 transition-colors cursor-pointer"
-            >
-              Consultar Contrato
-            </button>
-            <button
-              type="button"
-              onClick={navigateToPanel}
-              className="hover:text-zinc-900 font-semibold transition-colors cursor-pointer"
-            >
-              Painel
-            </button>
+            {hasValidAgentLink && (
+              <button
+                type="button"
+                onClick={() => {
+                  setView('consult');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="hover:text-zinc-900 transition-colors cursor-pointer"
+              >
+                Consultar Contrato
+              </button>
+            )}
           </div>
         </div>
       </footer>

@@ -13,12 +13,14 @@ interface OfficialRateTableProps {
   selectedAmount: number;
   selectedInstallments: number;
   onSelectPlan: (amount: number, installments: InstallmentCount) => void;
+  contractEnabled?: boolean;
 }
 
 export const OfficialRateTable: React.FC<OfficialRateTableProps> = ({
   selectedAmount,
   selectedInstallments,
   onSelectPlan,
+  contractEnabled = false,
 }) => {
   const [showOriginalFlyer, setShowOriginalFlyer] = useState(false);
 
@@ -36,7 +38,10 @@ export const OfficialRateTable: React.FC<OfficialRateTableProps> = ({
             Tabela Oficial de Parcelas — Crédito Pessoal
           </h2>
           <p className="text-sm text-zinc-600 mt-1">
-            Taxa de juros fixa de {COMPANY_INFO.monthlyRatePercent.toFixed(2).replace('.', ',')}% ao mês. Clique em qualquer valor abaixo para preencher seu contrato automaticamente.
+            Taxa de juros fixa de {COMPANY_INFO.monthlyRatePercent.toFixed(2).replace('.', ',')}% ao mês.{' '}
+            {contractEnabled
+              ? 'Clique em qualquer valor abaixo para preencher seu contrato automaticamente.'
+              : 'Clique em qualquer valor abaixo para simular as parcelas no painel acima.'}
           </p>
         </div>
 
