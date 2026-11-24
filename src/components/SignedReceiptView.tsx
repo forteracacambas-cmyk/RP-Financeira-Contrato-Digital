@@ -17,20 +17,26 @@ import { ContractDocument } from './ContractDocument';
 interface SignedReceiptViewProps {
   contract: SignedLoanContract;
   audit: ContractVerificationAudit;
+  portableToken?: string;
   onStartNewContract: () => void;
 }
 
 export const SignedReceiptView: React.FC<SignedReceiptViewProps> = ({
   contract,
   audit,
+  portableToken,
   onStartNewContract,
 }) => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
-  const verificationUrl = `${window.location.origin}/?contrato=${encodeURIComponent(
-    contract.protocol
-  )}&chave=${encodeURIComponent(contract.accessToken)}`;
+  const verificationUrl = portableToken
+    ? `${window.location.origin}/?contrato=${encodeURIComponent(
+        contract.protocol
+      )}&p=${encodeURIComponent(portableToken)}`
+    : `${window.location.origin}/?contrato=${encodeURIComponent(
+        contract.protocol
+      )}&chave=${encodeURIComponent(contract.accessToken)}`;
 
   useEffect(() => {
     let active = true;

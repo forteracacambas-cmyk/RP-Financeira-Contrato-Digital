@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Eraser, PenTool, RotateCcw } from 'lucide-react';
 
+import { compressStrokes } from '../lib/portableContract';
+
 interface SignatureCanvasProps {
   value: string;
   onChange: (dataUrl: string) => void;
+  onStrokesChange?: (compactStrokes: string) => void;
   signerName?: string;
 }
 
@@ -15,6 +18,7 @@ interface Point {
 export const SignatureCanvas: React.FC<SignatureCanvasProps> = ({
   value,
   onChange,
+  onStrokesChange,
   signerName,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -112,13 +116,16 @@ export const SignatureCanvas: React.FC<SignatureCanvasProps> = ({
       const totalPoints = strokeList.reduce((acc, s) => acc + s.length, 0);
       if (strokeList.length === 0 || totalPoints < 5) {
         onChange('');
+        onStrokesChange?.('');
         return;
       }
       const canvas = canvasRef.current;
       if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
       onChange(canvas.toDataURL('image/png'));
+      onStrokesChange?.(compressStrokes(strokeList, rect.width || 600, rect.height || 200));
     },
-    [onChange]
+    [onChange, onStrokesChange]
   );
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -160,6 +167,7 @@ export const SignatureCanvas: React.FC<SignatureCanvasProps> = ({
     currentStrokeRef.current = [];
     renderStrokes([]);
     onChange('');
+    onStrokesChange?.('');
   };
 
   const handleUndo = () => {
