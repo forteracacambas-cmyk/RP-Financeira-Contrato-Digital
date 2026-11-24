@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { Hono } from 'hono';
-import postgres, { type Sql } from 'postgres';
+import { SupabaseStore } from './supabase-store.ts';
 import { calculateInstallmentValue, COMPANY_INFO, isValidCPF, onlyDigits } from './src/lib/loanTable.ts';
 import type {
   ContractVerificationAudit,
@@ -12,12 +12,12 @@ import type {
   VisitRecord,
 } from './src/types/contract.ts';
 
-interface StoredUser extends PanelUserPublic {
-  passwordHash: string;
-}
+import type { StoredUser } from './supabase-store.ts';
 
 interface ApiConfig {
-  DATABASE_URL?: string;
+  SUPABASE_BACKEND_SECRET?: string;
+  SUPABASE_URL?: string;
+  SUPABASE_PUBLISHABLE_KEY?: string;
   SESSION_SECRET?: string;
   ADMIN_USERNAME?: string;
   ADMIN_PASSCODE?: string;
@@ -26,7 +26,7 @@ interface ApiConfig {
 interface ApiRequest {
   config: ApiConfig;
   authUser?: StoredUser;
-  db: Sql;
+  db: SupabaseStore;
   headers: { authorization: string; 'user-agent': string };
   body: Record<string, unknown>;
   query: Record<string, string>;
@@ -247,7 +247,7 @@ export function createApi() {
     app.on(method, path, async (context) => {
       const config = context.env;
       const res = jsonResponse();
-      if (!config.DATABASE_URL || (config.SESSION_SECRET?.length ?? 0) < 32) {
+      if (!config.SUPABASE_BACKEND_SECRET || !config.SUPABASE_URL || !config.SUPABASE_PUBLISHABLE_KEY || (config.SESSION_SECRET?.length ?? 0) < 32) {
         return res.status(503).json({ error: 'Servidor ainda não configurado.' });
       }
       let body: Record<string, unknown> = {};
@@ -277,7 +277,7 @@ export function createApi() {
           return res.status(400).json({ error: 'Corpo da requisição inválido.' });
         }
       }
-      const db = postgres(config.DATABASE_URL, { ssl: 'verify-full', prepare: false, max: 1, connect_timeout: 8 });
+      const db = new SupabaseStore(config.SUPABASE_BACKEND_SECRET, config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY);
       const req: ApiRequest = {
         config,
         db,
@@ -298,19 +298,9 @@ export function createApi() {
       } catch (error) {
         console.error('Falha na API', (error as { code?: string }).code ?? 'unknown');
         return res.status(503).json({ error: 'Banco de dados indisponível. Tente novamente.' });
-      } finally {
-        await db.end({ timeout: 0 });
       }
     });
   }
-
-  const findUserById = async (db: Sql, id: string) =>
-    (await db<{ record: StoredUser }[]>`select record from rp_financeira.panel_users where id = ${id}`)[0]?.record;
-  const findUserByUsername = async (db: Sql, username: string) =>
-    (await db<{ record: StoredUser }[]>`select record from rp_financeira.panel_users where username = ${username}`)[0]?.record;
-  const findActiveAgentByCode = async (db: Sql, code: string) =>
-    (await db<{ record: StoredUser }[]>`select record from rp_financeira.panel_users where agent_code = ${code}
-      and record->>'active' = 'true'`)[0]?.record;
 
   const requireAuth = async (req: ApiRequest, res: ApiResponse) => {
     const authHeader = req.headers.authorization || '';
@@ -322,7 +312,7 @@ export function createApi() {
     if (!decoded) {
       return res.status(401).json({ error: 'Token inválido ou expirado. Faça login novamente.' });
     }
-    const user = await findUserById(req.db, decoded.sub);
+    const user = await req.db.userById(decoded.sub);
     if (!user || !user.active) {
       return res.status(403).json({ error: 'Usuário desativado ou não encontrado.' });
     }
@@ -330,12 +320,12 @@ export function createApi() {
   };
 
   route('GET', '/api/health', async (req, res) => {
-    await req.db`select id from rp_financeira.panel_users limit 1`;
+    await req.db.health();
     return res.json({ ok: true, storage: 'postgresql' });
   });
 
   route('GET', '/api/auth/status', async (req, res) => {
-    await req.db`select id from rp_financeira.panel_users limit 1`;
+    await req.db.health();
     return res.json({ needsAdminSetup: false });
   });
 
@@ -355,7 +345,7 @@ export function createApi() {
       if (!timingSafeTextEqual(password, envPasscode)) {
         return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
       }
-      let adminUser = await findUserByUsername(req.db, envUsername);
+      let adminUser = await req.db.userByUsername(envUsername);
       if (!adminUser) {
         adminUser = {
           id: crypto.randomUUID(),
@@ -367,10 +357,8 @@ export function createApi() {
           createdAt: new Date().toISOString(),
           passwordHash: hashPassword(envPasscode),
         };
-        await req.db`insert into rp_financeira.panel_users (id, username, agent_code, record)
-          values (${adminUser.id}, ${adminUser.username}, ${adminUser.agentCode}, ${req.db.json({ ...adminUser })})
-          on conflict (username) do nothing`;
-        adminUser = await findUserByUsername(req.db, envUsername);
+        await req.db.insertUser(adminUser);
+        adminUser = await req.db.userByUsername(envUsername);
 
       }
       if (adminUser?.role !== 'admin' || !adminUser.active) {
@@ -380,7 +368,7 @@ export function createApi() {
       return res.json({ token, user: toPublicUser(adminUser) });
     }
 
-    const user = await findUserByUsername(req.db, username);
+    const user = await req.db.userByUsername(username);
     if (!user || !verifyPassword(password, user.passwordHash)) {
       return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
     }
@@ -403,7 +391,7 @@ export function createApi() {
     if (!agentCode) {
       return res.status(400).json({ valid: false, error: 'Código de atendimento inválido.' });
     }
-    const agent = await findActiveAgentByCode(req.db, agentCode);
+    const agent = await req.db.activeAgent(agentCode);
     if (!agent) {
       return res.status(404).json({
         valid: false,
@@ -417,8 +405,7 @@ export function createApi() {
       agentCode: agent.agentCode,
       visitedAt: new Date().toISOString(),
     };
-    await req.db`insert into rp_financeira.visits (id, agent_id, visited_at, record)
-      values (${visit.id}, ${visit.agentId}, ${visit.visitedAt}, ${req.db.json({ ...visit })})`;
+    await req.db.insertVisit(visit);
 
     return res.status(201).json({
       valid: true,
@@ -445,11 +432,8 @@ export function createApi() {
     const db = req.db;
     const begin = new Date(startMs).toISOString();
     const end = new Date(endMs).toISOString();
-    const agentScope = authUser.role === 'admin' ? db`true` : db`agent_id = ${authUser.id}`;
-    const visitsInRange = (await db<{ record: VisitRecord }[]>`select record from rp_financeira.visits
-      where visited_at between ${begin} and ${end} and ${agentScope}`).map((row) => row.record);
-    const contractsInRange = (await db<{ record: SignedLoanContract }[]>`select record from rp_financeira.contracts
-      where signed_at between ${begin} and ${end} and ${agentScope}`).map((row) => row.record);
+    const scope = authUser.role === 'admin' ? null : authUser.id;
+    const { visits: visitsInRange, contracts: contractsInRange } = await db.activity(begin, end, scope);
 
     const filteredVisits = filterAgentId
       ? visitsInRange.filter((v) => v.agentId === filterAgentId)
@@ -462,7 +446,7 @@ export function createApi() {
 
     const visibleUsers =
       authUser.role === 'admin'
-        ? (await db<{ record: StoredUser }[]>`select record from rp_financeira.panel_users`).map((row) => row.record)
+        ? await db.users()
         : [authUser];
 
     const employeesStats: DashboardEmployeeStat[] = visibleUsers.map((u) => {
@@ -528,10 +512,8 @@ export function createApi() {
       passwordHash: hashPassword(password),
     };
 
-    const inserted = await req.db`insert into rp_financeira.panel_users (id, username, agent_code, record)
-      values (${newEmployee.id}, ${newEmployee.username}, ${newEmployee.agentCode}, ${req.db.json({ ...newEmployee })})
-      on conflict do nothing returning id`;
-    if (!inserted.length) {
+    const inserted = await req.db.insertUser(newEmployee);
+    if (!inserted) {
       return res.status(409).json({ error: 'Este login ou código de link já está em uso.' });
     }
 
@@ -542,7 +524,7 @@ export function createApi() {
     if (req.authUser!.role !== 'admin') {
       return res.status(403).json({ error: 'Acesso restrito ao Administrador Master.' });
     }
-    const target = await findUserById(req.db, String(req.params.id));
+    const target = await req.db.userById(String(req.params.id));
     if (!target) {
       return res.status(404).json({ error: 'Funcionário não encontrado.' });
     }
@@ -555,24 +537,23 @@ export function createApi() {
       changes.passwordHash = hashPassword(req.body.password);
     }
 
-    const [updated] = await req.db<{ record: StoredUser }[]>`update rp_financeira.panel_users
-      set record = record || ${req.db.json({ ...changes })} where id = ${target.id} returning record`;
+    const updated = await req.db.updateUser(target.id, changes);
     if (!updated) return res.status(404).json({ error: 'Funcionário não encontrado.' });
-    return res.json({ employee: toPublicUser(updated.record) });
+    return res.json({ employee: toPublicUser(updated) });
   }, true);
 
   route('DELETE', '/api/panel/employees/:id', async (req, res) => {
     if (req.authUser!.role !== 'admin') {
       return res.status(403).json({ error: 'Acesso restrito ao Administrador Master.' });
     }
-    const target = await findUserById(req.db, String(req.params.id));
+    const target = await req.db.userById(String(req.params.id));
     if (!target) {
       return res.status(404).json({ error: 'Funcionário não encontrado.' });
     }
     if (target.role === 'admin') {
       return res.status(400).json({ error: 'Não é possível excluir o Administrador Master.' });
     }
-    await req.db`delete from rp_financeira.panel_users where id = ${target.id}`;
+    await req.db.deleteUser(target.id);
     return res.json({ ok: true });
   }, true);
 
@@ -581,7 +562,7 @@ export function createApi() {
     try {
       const body = req.body as Partial<LoanContractInput>;
       const agentCode = sanitizeSlug(sanitizeString(body.agentCode, 50));
-      const agent = agentCode ? await findActiveAgentByCode(req.db, agentCode) : undefined;
+      const agent = agentCode ? await req.db.activeAgent(agentCode) : undefined;
       if (!agent) {
         return res.status(403).json({
           error: 'Link de atendimento inválido ou desativado. Solicite um link válido a um consultor autorizado.',
@@ -714,8 +695,7 @@ export function createApi() {
         integrityHash,
       };
 
-      await req.db`insert into rp_financeira.contracts (protocol, agent_id, signed_at, record)
-        values (${protocol}, ${agent.id}, ${signedAt}, ${req.db.json({ ...signedContract })})`;
+      await req.db.insertContract(signedContract);
 
       const audit = buildVerificationAudit(signedContract);
       return res.status(201).json({ contract: signedContract, audit });
@@ -734,9 +714,7 @@ export function createApi() {
       return res.status(400).json({ error: 'Informe o número do protocolo do contrato.' });
     }
 
-    const [row] = await req.db<{ record: SignedLoanContract }[]>`select record
-      from rp_financeira.contracts where protocol = ${protocol}`;
-    const contract = row?.record;
+    const contract = await req.db.contract(protocol);
     if (!contract) {
       return res.status(404).json({ error: 'Contrato não encontrado. Verifique o número de protocolo.' });
     }
