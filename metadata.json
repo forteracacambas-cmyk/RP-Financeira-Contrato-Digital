@@ -1,0 +1,6 @@
+{
+  "name": "RP Financeira — Contrato Digital",
+  "description": "Plataforma de contratação e assinatura digital de empréstimo pessoal da RP Financeira (CNPJ 44.431.431/0001-91) com simulação oficial, selos de autenticação, QR Code e consulta via WhatsApp.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
