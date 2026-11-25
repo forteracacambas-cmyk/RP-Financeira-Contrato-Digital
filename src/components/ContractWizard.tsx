@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Building2,
   Check,
+  CheckCircle2,
   FileText,
   Loader2,
   RotateCcw,
@@ -70,6 +71,7 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
   const [stepError, setStepError] = useState<string>('');
   const [cepLoading, setCepLoading] = useState(false);
   const [cepFeedback, setCepFeedback] = useState('');
+  const [justIdentified, setJustIdentified] = useState(false);
   const wizardTopRef = useRef<HTMLDivElement | null>(null);
 
   const cpfDigits = onlyDigits(form.cpf);
@@ -180,6 +182,11 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
     if (err) {
       setStepError(err);
       return;
+    }
+    if (step === 1) {
+      setJustIdentified(true);
+    } else {
+      setJustIdentified(false);
     }
     setStep((s) => Math.min(3, s + 1));
     scrollWizardTop();
@@ -311,6 +318,58 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
           })}
         </div>
       </div>
+
+      {/* Cartão de Cliente Identificado após concluir a Etapa 1 */}
+      {step >= 2 && isStepComplete(1) && (
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          className={`rounded-2xl border p-4 sm:p-5 transition-colors ${
+            justIdentified
+              ? 'border-emerald-400 bg-emerald-50 shadow-sm'
+              : 'border-emerald-200 bg-emerald-50/70'
+          }`}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-800">
+                    Cliente Identificado
+                  </span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-emerald-600/10 border border-emerald-600/20 text-[11px] font-semibold text-emerald-900">
+                    Cadastro validado para contratação
+                  </span>
+                </div>
+                <p className="text-sm sm:text-base font-bold text-zinc-900">
+                  {form.fullName.trim()}
+                </p>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-700 font-mono-data">
+                  <span>CPF: {form.cpf}</span>
+                  <span>Doc: {form.rgOrCnh}</span>
+                  <span>Nasc.: {form.birthDate}</span>
+                  <span>WhatsApp: {form.phone}</span>
+                  <span className="font-sans">
+                    {form.city} / {form.state}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleJumpToStep(1)}
+              className="self-start sm:self-center text-xs font-semibold text-emerald-800 hover:text-emerald-950 underline underline-offset-4 cursor-pointer shrink-0"
+            >
+              Alterar dados
+            </button>
+          </div>
+        </motion.div>
+      )}
 
       {/* Formulário da Etapa Atual */}
       <form onSubmit={onSubmit}>
@@ -567,6 +626,31 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
                     </select>
                   </div>
                 </div>
+
+                {isStepComplete(1) && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 flex items-start gap-3"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-0.5 text-xs sm:text-sm">
+                      <p className="font-bold text-emerald-950">
+                        Cliente identificado: {form.fullName.trim()}
+                      </p>
+                      <p className="text-emerald-900">
+                        CPF <span className="font-mono-data font-semibold">{form.cpf}</span> e endereço em{' '}
+                        <span className="font-semibold">
+                          {form.city}/{form.state}
+                        </span>{' '}
+                        validados. Clique em <strong>Continuar</strong> para informar seu banco e chave PIX.
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
               </>
             )}
 
