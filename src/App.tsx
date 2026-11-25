@@ -86,8 +86,10 @@ export default function App() {
     error?: string;
   }>({ status: 'none' });
 
-  // Animated splash before entering the 4-step contract
+  // Animated splash & draft resume before entering the 4-step contract
   const [showOpeningSplash, setShowOpeningSplash] = useState(false);
+  const [wizardStep, setWizardStep] = useState<number>(1);
+  const [resumedDraft, setResumedDraft] = useState<boolean>(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -211,6 +213,44 @@ export default function App() {
               status: 'valid',
               agentCode: json.agentCode,
             });
+            try {
+              const rawDraft = window.localStorage.getItem(`rp_contract_draft_${json.agentCode}`);
+              if (rawDraft) {
+                const parsed = JSON.parse(rawDraft) as {
+                  step?: number;
+                  form?: Partial<LoanContractInput>;
+                  customAmountMode?: boolean;
+                  updatedAt?: number;
+                };
+                const isFresh =
+                  typeof parsed.updatedAt === 'number' &&
+                  Date.now() - parsed.updatedAt < 7 * 86400000;
+                const hasProgress =
+                  (parsed.step ?? 1) > 1 ||
+                  Boolean(
+                    parsed.form?.fullName ||
+                      parsed.form?.cpf ||
+                      parsed.form?.cep ||
+                      parsed.form?.agency ||
+                      parsed.form?.signatureDataUrl
+                  );
+                if (isFresh && hasProgress && parsed.form) {
+                  setForm({
+                    ...INITIAL_FORM,
+                    ...parsed.form,
+                    agentCode: json.agentCode,
+                    firstDueDate: getAutoFirstDueDate(),
+                  });
+                  setCustomAmountMode(Boolean(parsed.customAmountMode));
+                  setWizardStep(Math.min(4, Math.max(1, Number(parsed.step) || 1)));
+                  setResumedDraft(true);
+                  setShowOpeningSplash(false);
+                  return;
+                }
+              }
+            } catch {
+              // Ignore malformed draft
+            }
             setShowOpeningSplash(true);
             setForm((prev) => ({ ...prev, agentCode: json.agentCode }));
             return;
@@ -225,6 +265,24 @@ export default function App() {
         });
     }
   }, []);
+
+  // Auto-save draft whenever form, step, or custom mode changes
+  useEffect(() => {
+    if (agentState.status !== 'valid' || !agentState.agentCode || view !== 'home') return;
+    try {
+      window.localStorage.setItem(
+        `rp_contract_draft_${agentState.agentCode}`,
+        JSON.stringify({
+          step: wizardStep,
+          form,
+          customAmountMode,
+          updatedAt: Date.now(),
+        })
+      );
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [agentState.status, agentState.agentCode, view, wizardStep, form, customAmountMode]);
 
   const navigateToSite = () => {
     window.history.pushState({}, '', '/');
@@ -256,6 +314,13 @@ export default function App() {
   };
 
   const handleStartNewContract = () => {
+    if (agentState.agentCode) {
+      try {
+        window.localStorage.removeItem(`rp_contract_draft_${agentState.agentCode}`);
+      } catch {
+        // Ignore storage error
+      }
+    }
     const keepRef =
       agentState.status === 'valid' && agentState.agentCode
         ? `?ref=${encodeURIComponent(agentState.agentCode)}`
@@ -264,6 +329,9 @@ export default function App() {
     setSignedResult(null);
     setDeepLinkError('');
     setSubmitError('');
+    setResumedDraft(false);
+    setWizardStep(1);
+    setCustomAmountMode(false);
     setForm({
       ...INITIAL_FORM,
       agentCode: agentState.agentCode || '',
@@ -303,9 +371,9 @@ export default function App() {
     }
     if (
       onlyDigits(form.cep).length !== 8 ||
-      !form.street.trim() ||
+      form.street.trim().length < 3 ||
       !form.number.trim() ||
-      !form.city.trim()
+      form.city.trim().length < 2
     ) {
       return 'Preencha um CEP válido e o endereço completo (rua, número e cidade).';
     }
@@ -347,6 +415,14 @@ export default function App() {
       }
       const contract = json.contract as SignedLoanContract;
       const audit = json.audit as ContractVerificationAudit;
+      if (agentState.agentCode) {
+        try {
+          window.localStorage.removeItem(`rp_contract_draft_${agentState.agentCode}`);
+        } catch {
+          // Ignore storage error
+        }
+      }
+      setResumedDraft(false);
       const params = new URLSearchParams({
         contrato: contract.protocol,
         chave: contract.accessToken,
@@ -546,6 +622,10 @@ export default function App() {
             >
               <ContractWizard
                 form={form}
+                step={wizardStep}
+                setStep={setWizardStep}
+                resumedDraft={resumedDraft}
+                onResetDraft={handleStartNewContract}
                 computedInstallment={computedInstallment}
                 computedTotal={computedTotal}
                 customAmountMode={customAmountMode}

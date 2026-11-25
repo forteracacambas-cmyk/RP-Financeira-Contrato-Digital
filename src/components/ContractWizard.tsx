@@ -9,6 +9,7 @@ import {
   Check,
   FileText,
   Loader2,
+  RotateCcw,
   ShieldCheck,
   UserCheck,
 } from 'lucide-react';
@@ -36,10 +37,13 @@ import type {
 } from '../types/contract';
 import { SignatureCanvas } from './SignatureCanvas';
 import { ContractDocument } from './ContractDocument';
-import { AuthenticationSeals } from './AuthenticationSeals';
 
 interface ContractWizardProps {
   form: LoanContractInput;
+  step: number;
+  setStep: React.Dispatch<React.SetStateAction<number>>;
+  resumedDraft?: boolean;
+  onResetDraft?: () => void;
   computedInstallment: number;
   computedTotal: number;
   customAmountMode: boolean;
@@ -56,11 +60,15 @@ const STEPS = [
   { id: 1, title: 'Valor e Parcelas', shortTitle: 'Valor', icon: Banknote },
   { id: 2, title: 'Seus Dados', shortTitle: 'Dados', icon: UserCheck },
   { id: 3, title: 'Banco e PIX', shortTitle: 'Banco', icon: Building2 },
-  { id: 4, title: 'Assinatura', shortTitle: 'Assinar', icon: FileText },
+  { id: 4, title: 'Contrato e Assinatura', shortTitle: 'Assinar', icon: FileText },
 ] as const;
 
 export const ContractWizard: React.FC<ContractWizardProps> = ({
   form,
+  step,
+  setStep,
+  resumedDraft = false,
+  onResetDraft,
   computedInstallment,
   computedTotal,
   customAmountMode,
@@ -72,9 +80,7 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
   submitError,
   setSubmitError,
 }) => {
-  const [step, setStep] = useState<number>(1);
   const [stepError, setStepError] = useState<string>('');
-  const [showFullDraft, setShowFullDraft] = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
   const [cepFeedback, setCepFeedback] = useState('');
   const wizardTopRef = useRef<HTMLDivElement | null>(null);
@@ -124,7 +130,9 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
         form.email.includes('@') &&
         form.email.includes('.') &&
         cepDigits.length === 8 &&
-        Boolean(form.street.trim() && form.number.trim() && form.city.trim())
+        form.street.trim().length >= 3 &&
+        Boolean(form.number.trim()) &&
+        form.city.trim().length >= 2
       );
     }
     if (stepNum === 3) {
@@ -167,7 +175,7 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
       if (cepDigits.length !== 8) {
         return 'Informe um CEP válido com 8 dígitos.';
       }
-      if (!form.street.trim() || !form.number.trim() || !form.city.trim()) {
+      if (form.street.trim().length < 3 || !form.number.trim() || form.city.trim().length < 2) {
         return 'Preencha o endereço completo (rua, número e cidade).';
       }
       return null;
@@ -239,7 +247,25 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
   const progressPercent = (step / STEPS.length) * 100;
 
   return (
-    <div ref={wizardTopRef} className="max-w-3xl mx-auto scroll-mt-24 space-y-5">
+    <div ref={wizardTopRef} className="max-w-5xl mx-auto scroll-mt-24 space-y-5">
+      {resumedDraft && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs sm:text-sm text-emerald-900">
+          <span>
+            <strong>Continuando de onde você parou:</strong> seus dados já preenchidos foram mantidos automaticamente.
+          </span>
+          {onResetDraft && (
+            <button
+              type="button"
+              onClick={onResetDraft}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800 hover:text-emerald-950 underline underline-offset-4 self-start sm:self-center cursor-pointer shrink-0"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Recomeçar do zero
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Cabeçalho e Barra de Etapas */}
       <div className="rounded-2xl border border-zinc-200 bg-white p-5 sm:p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -863,73 +889,20 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
               </>
             )}
 
-            {/* ETAPA 4: TERMOS E ASSINATURA */}
+            {/* ETAPA 4: CONTRATO COMPLETO ABERTO E ASSINATURA */}
             {step === 4 && (
               <>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-zinc-200">
-                  <div>
-                    <h2 className="text-lg font-bold text-zinc-900">
-                      Confirmação e Assinatura Online
-                    </h2>
-                    <p className="text-sm text-zinc-600 mt-0.5">
-                      Aceite os termos e assine na tela para gerar seu QR Code.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowFullDraft((v) => !v)}
-                    className="text-xs font-semibold text-[#A51C20] hover:text-[#8B1519] underline underline-offset-4 self-start sm:self-center cursor-pointer"
-                  >
-                    {showFullDraft ? 'Ocultar contrato completo' : 'Ler contrato completo'}
-                  </button>
+                <div className="pb-4 border-b border-zinc-200">
+                  <h2 className="text-lg sm:text-xl font-bold text-zinc-900">
+                    Contrato Completo, Cláusulas e Assinatura Online
+                  </h2>
+                  <p className="text-sm text-zinc-600 mt-0.5">
+                    Leia todas as 4 páginas do seu contrato abaixo, marque os termos de aceite e assine na tela para finalizar.
+                  </p>
                 </div>
 
-                {/* Resumo Rápido */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 rounded-xl border border-zinc-200 bg-zinc-50/70 text-xs">
-                  <div>
-                    <p className="text-zinc-500 font-medium">Valor e Plano</p>
-                    <p className="font-mono-data font-bold text-zinc-900 text-sm mt-0.5">
-                      {formatCurrency(form.loanAmount)}
-                    </p>
-                    <p className="font-mono-data text-zinc-600">
-                      {form.installments}x de {formatCurrency(computedInstallment)} · Faturas: {form.invoiceDeliveryMethod || 'WhatsApp'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-zinc-500 font-medium">Contratante</p>
-                    <p className="font-bold text-zinc-900 text-sm mt-0.5 truncate">{form.fullName}</p>
-                    <p className="font-mono-data text-zinc-600">CPF {form.cpf}</p>
-                  </div>
-                  <div>
-                    <p className="text-zinc-500 font-medium">Recebimento</p>
-                    <p className="font-bold text-zinc-900 text-sm mt-0.5 truncate">{form.bankName}</p>
-                    <p className="font-mono-data text-zinc-600 truncate">PIX: {form.pixKey}</p>
-                  </div>
-                </div>
-
-                {/* Termos / Minuta */}
-                {showFullDraft ? (
-                  <ContractDocument data={currentFormWithCalculations} />
-                ) : (
-                  <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 space-y-2.5 text-xs sm:text-sm text-zinc-700 font-serif-legal max-h-48 overflow-y-auto">
-                    <p>
-                      <strong>1. OBJETO:</strong> A {COMPANY_INFO.legalName} (CNPJ {COMPANY_INFO.cnpj}) concede empréstimo pessoal de{' '}
-                      <strong>{formatCurrency(form.loanAmount)}</strong> em{' '}
-                      <strong>{form.installments}x de {formatCurrency(computedInstallment)}</strong>.
-                    </p>
-                    <p>
-                      <strong>2. LIBERAÇÃO:</strong> Crédito via TED ou PIX em conta de mesma titularidade após assinatura digital.
-                    </p>
-                    <p>
-                      <strong>3. TAXAS E QUITAÇÃO:</strong> Taxa fixa de {COMPANY_INFO.monthlyRatePercent.toFixed(2).replace('.', ',')}% ao mês, sem taxas ocultas ou depósitos antecipados, com abatimento proporcional na quitação antecipada (CDC).
-                    </p>
-                    <p>
-                      <strong>4. VALIDADE JURÍDICA:</strong> Assinatura eletrônica válida conforme Lei nº 14.063/2020, com selo SHA-256 e proteção LGPD.
-                    </p>
-                  </div>
-                )}
-
-                <AuthenticationSeals compact />
+                {/* Documento Completo 100% Aberto (4 Páginas e 18 Cláusulas) */}
+                <ContractDocument data={currentFormWithCalculations} />
 
                 {/* Checkboxes */}
                 <div className="space-y-3">

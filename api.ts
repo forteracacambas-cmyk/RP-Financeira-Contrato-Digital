@@ -184,7 +184,7 @@ function buildVerificationAudit(contract: SignedLoanContract): ContractVerificat
     clausesAccepted: Boolean(contract.acceptedTerms && contract.acceptedDataTruth),
     signaturePresent:
       contract.signatureDataUrl.startsWith('data:image/png;base64,') &&
-      contract.signatureDataUrl.length > 500,
+      contract.signatureDataUrl.length > 120,
     hashVerified: contract.integrityHash === expectedHash,
   };
 }
@@ -760,7 +760,7 @@ export function createApi() {
       }
 
       const signatureDataUrl = typeof body.signatureDataUrl === 'string' ? body.signatureDataUrl.trim() : '';
-      if (!signatureDataUrl.startsWith('data:image/png;base64,') || signatureDataUrl.length < 500 || signatureDataUrl.length > 900000) {
+      if (!signatureDataUrl.startsWith('data:image/png;base64,') || signatureDataUrl.length < 120 || signatureDataUrl.length > 900000) {
         return res.status(400).json({ error: 'Assinatura digital inválida ou não desenhada.' });
       }
 

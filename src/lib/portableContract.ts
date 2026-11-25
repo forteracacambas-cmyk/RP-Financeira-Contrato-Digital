@@ -225,7 +225,7 @@ export function buildLocalAudit(
     clausesAccepted: Boolean(contract.acceptedTerms && contract.acceptedDataTruth),
     signaturePresent:
       contract.signatureDataUrl.startsWith('data:image/png;base64,') &&
-      contract.signatureDataUrl.length > 300,
+      contract.signatureDataUrl.length > 120,
     hashVerified,
   };
 }
