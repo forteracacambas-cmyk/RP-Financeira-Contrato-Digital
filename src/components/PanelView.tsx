@@ -48,6 +48,8 @@ const DATE_PRESETS: { id: DatePreset; label: string }[] = [
   { id: 'custom', label: 'Personalizado' },
 ];
 
+const PANEL_SESSION_STORAGE_KEY = 'rp_panel_session_token';
+
 export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
   const [token, setToken] = useState<string>('');
   const [user, setUser] = useState<PanelUserPublic | null>(null);
@@ -83,24 +85,56 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
   const [myQrUrl, setMyQrUrl] = useState('');
   const [selectedContract, setSelectedContract] = useState<SignedLoanContract | null>(null);
 
-  // Check backend / admin setup status on mount
+  // Check backend status and auto-restore saved session on mount
   useEffect(() => {
     let active = true;
-    fetch('/api/auth/status')
-      .then(async (res) => {
-        const contentType = res.headers.get('content-type') || '';
+    const savedToken = (() => {
+      try {
+        return window.localStorage.getItem(PANEL_SESSION_STORAGE_KEY) || '';
+      } catch {
+        return '';
+      }
+    })();
+
+    const restoreOrCheckStatus = async () => {
+      try {
+        if (savedToken) {
+          const meRes = await fetch('/api/auth/me', {
+            headers: { Authorization: `Bearer ${savedToken}` },
+          });
+          if (meRes.ok && meRes.headers.get('content-type')?.includes('application/json')) {
+            const meJson = await meRes.json();
+            if (!active) return;
+            setToken(savedToken);
+            setUser(meJson.user);
+            setAuthMode('authenticated');
+            return;
+          }
+          if (meRes.status === 401 || meRes.status === 403) {
+            try {
+              window.localStorage.removeItem(PANEL_SESSION_STORAGE_KEY);
+            } catch {
+              // Ignore storage error
+            }
+          }
+        }
+
+        const statusRes = await fetch('/api/auth/status');
+        const contentType = statusRes.headers.get('content-type') || '';
         if (!contentType.includes('application/json')) {
           throw new Error('STATIC_HOST');
         }
-        if (!res.ok) throw new Error('Servidor indisponível.');
+        if (!statusRes.ok) throw new Error('Servidor indisponível.');
         if (!active) return;
         setAuthMode('login');
-      })
-      .catch(() => {
+      } catch {
         if (!active) return;
         setAuthMode('login');
         setAuthError('Servidor indisponível. Aguarde e tente entrar novamente.');
-      });
+      }
+    };
+
+    void restoreOrCheckStatus();
     return () => {
       active = false;
     };
@@ -125,13 +159,19 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
         const res = await fetch(`/api/panel/dashboard?${qs.toString()}`, {
           headers: { Authorization: `Bearer ${activeToken}` },
         });
-        if (res.status === 401) {
+        if (res.status === 401 || res.status === 403) {
+          try {
+            window.localStorage.removeItem(PANEL_SESSION_STORAGE_KEY);
+          } catch {
+            // Ignore storage error
+          }
           setToken('');
           setUser(null);
           setDashboard(null);
           setSelectedAgentId('');
           setSelectedContract(null);
           setAuthMode('login');
+          setAuthError('Sua sessão expirou ou o acesso foi desativado. Entre novamente.');
           return;
         }
         if (res.ok) {
@@ -175,6 +215,11 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
       }
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Usuário ou senha incorretos.');
+      try {
+        window.localStorage.setItem(PANEL_SESSION_STORAGE_KEY, json.token);
+      } catch {
+        // Ignore storage quota errors
+      }
       setSelectedAgentId('');
       setDashboard(null);
       setSelectedContract(null);
@@ -193,6 +238,11 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
   };
 
   const handleLogout = () => {
+    try {
+      window.localStorage.removeItem(PANEL_SESSION_STORAGE_KEY);
+    } catch {
+      // Ignore storage error
+    }
     setToken('');
     setUser(null);
     setDashboard(null);

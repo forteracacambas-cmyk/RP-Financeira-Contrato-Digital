@@ -80,7 +80,7 @@ function createSessionToken(user: StoredUser, secret: string): string {
       sub: user.id,
       usr: user.username,
       rol: user.role,
-      exp: Date.now() + 24 * 60 * 60 * 1000,
+      exp: Date.now() + 30 * 24 * 60 * 60 * 1000,
     })
   ).toString('base64url');
   const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
