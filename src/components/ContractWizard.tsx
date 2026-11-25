@@ -4,7 +4,6 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
-  Banknote,
   Building2,
   Check,
   FileText,
@@ -20,13 +19,10 @@ import {
   formatBirthDate,
   formatCEP,
   formatCPF,
-  formatCurrency,
   formatPhone,
   getAutoFirstDueDate,
-  INSTALLMENT_OPTIONS,
   isValidBirthDate,
   isValidCPF,
-  OFFICIAL_RATE_TABLE,
   onlyDigits,
 } from '../lib/loanTable';
 import type {
@@ -44,10 +40,6 @@ interface ContractWizardProps {
   setStep: React.Dispatch<React.SetStateAction<number>>;
   resumedDraft?: boolean;
   onResetDraft?: () => void;
-  computedInstallment: number;
-  computedTotal: number;
-  customAmountMode: boolean;
-  setCustomAmountMode: React.Dispatch<React.SetStateAction<boolean>>;
   updateField: <K extends keyof LoanContractInput>(key: K, value: LoanContractInput[K]) => void;
   onStrokesChange?: (compact: string) => void;
   onSubmit: (e: React.FormEvent) => void;
@@ -57,10 +49,9 @@ interface ContractWizardProps {
 }
 
 const STEPS = [
-  { id: 1, title: 'Valor e Parcelas', shortTitle: 'Valor', icon: Banknote },
-  { id: 2, title: 'Seus Dados', shortTitle: 'Dados', icon: UserCheck },
-  { id: 3, title: 'Banco e PIX', shortTitle: 'Banco', icon: Building2 },
-  { id: 4, title: 'Contrato e Assinatura', shortTitle: 'Assinar', icon: FileText },
+  { id: 1, title: 'Seus Dados', shortTitle: 'Dados', icon: UserCheck },
+  { id: 2, title: 'Banco e PIX', shortTitle: 'Banco', icon: Building2 },
+  { id: 3, title: 'Contrato e Assinatura', shortTitle: 'Assinar', icon: FileText },
 ] as const;
 
 export const ContractWizard: React.FC<ContractWizardProps> = ({
@@ -69,10 +60,6 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
   setStep,
   resumedDraft = false,
   onResetDraft,
-  computedInstallment,
-  computedTotal,
-  customAmountMode,
-  setCustomAmountMode,
   updateField,
   onStrokesChange,
   onSubmit,
@@ -118,9 +105,6 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
 
   const isStepComplete = (stepNum: number): boolean => {
     if (stepNum === 1) {
-      return form.loanAmount >= 1000 && form.loanAmount <= 100000 && form.installments >= 6;
-    }
-    if (stepNum === 2) {
       return (
         form.fullName.trim().length >= 5 &&
         cpfIsValid &&
@@ -135,7 +119,7 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
         form.city.trim().length >= 2
       );
     }
-    if (stepNum === 3) {
+    if (stepNum === 2) {
       return Boolean(
         form.bankName &&
           form.agency.trim().length >= 2 &&
@@ -148,12 +132,6 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
 
   const validateStep = (stepNum: number): string | null => {
     if (stepNum === 1) {
-      if (form.loanAmount < 1000 || form.loanAmount > 100000) {
-        return 'O valor do empréstimo deve estar entre R$ 1.000,00 e R$ 100.000,00.';
-      }
-      return null;
-    }
-    if (stepNum === 2) {
       if (form.fullName.trim().length < 5) {
         return 'Informe seu nome completo conforme documento oficial.';
       }
@@ -180,7 +158,7 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
       }
       return null;
     }
-    if (stepNum === 3) {
+    if (stepNum === 2) {
       if (!form.bankName || !form.agency.trim() || !form.accountNumber.trim() || !form.pixKey.trim()) {
         return 'Preencha o banco, agência, conta e chave PIX para recebimento.';
       }
@@ -203,7 +181,7 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
       setStepError(err);
       return;
     }
-    setStep((s) => Math.min(4, s + 1));
+    setStep((s) => Math.min(3, s + 1));
     scrollWizardTop();
   };
 
@@ -237,11 +215,9 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
 
   const autoFirstDueDate = getAutoFirstDueDate();
 
-  const currentFormWithCalculations: LoanContractInput = {
+  const currentFormForDoc: LoanContractInput = {
     ...form,
     firstDueDate: autoFirstDueDate,
-    installmentValue: computedInstallment,
-    totalPayable: computedTotal,
   };
 
   const progressPercent = (step / STEPS.length) * 100;
@@ -278,11 +254,11 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
             </h1>
           </div>
           <div className="sm:text-right rounded-xl bg-zinc-50 border border-zinc-200 px-3.5 py-2">
-            <p className="font-mono-data text-sm font-extrabold text-zinc-900">
-              {formatCurrency(form.loanAmount)}
+            <p className="text-xs font-semibold text-zinc-900">
+              {COMPANY_INFO.name}
             </p>
-            <p className="font-mono-data text-xs font-semibold text-[#A51C20]">
-              {form.installments}x de {formatCurrency(computedInstallment)}
+            <p className="font-mono-data text-[11px] text-zinc-500">
+              CNPJ {COMPANY_INFO.cnpj}
             </p>
           </div>
         </div>
@@ -295,8 +271,8 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
           />
         </div>
 
-        {/* Botões das 4 Etapas */}
-        <div className="grid grid-cols-4 gap-2">
+        {/* Botões das 3 Etapas */}
+        <div className="grid grid-cols-3 gap-2">
           {STEPS.map((item) => {
             const isActive = step === item.id;
             const completed = item.id < step && isStepComplete(item.id);
@@ -347,171 +323,15 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
             transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             className="rounded-2xl border border-zinc-200 bg-white p-5 sm:p-8 space-y-6"
           >
-            {/* ETAPA 1: VALOR E PARCELAS */}
+            {/* ETAPA 1: DADOS PESSOAIS E ENDEREÇO */}
             {step === 1 && (
-              <>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-zinc-200">
-                  <div>
-                    <h2 className="text-lg font-bold text-zinc-900">
-                      Escolha o valor e as parcelas
-                    </h2>
-                    <p className="text-sm text-zinc-600 mt-0.5">
-                      Taxa fixa de {COMPANY_INFO.monthlyRatePercent.toFixed(2).replace('.', ',')}% ao mês.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setCustomAmountMode((v) => !v)}
-                    className="text-xs font-semibold text-[#A51C20] hover:text-[#8B1519] underline underline-offset-4 self-start sm:self-center cursor-pointer"
-                  >
-                    {customAmountMode ? 'Escolher valores prontos' : 'Digitar outro valor'}
-                  </button>
-                </div>
-
-                {customAmountMode ? (
-                  <div className="space-y-2">
-                    <label htmlFor="wizard-custom-amount" className="block text-sm font-semibold text-zinc-800">
-                      Digite o valor (R$ 1.000,00 a R$ 100.000,00)
-                    </label>
-                    <div className="relative max-w-xs">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-mono-data text-sm text-zinc-500">
-                        R$
-                      </span>
-                      <input
-                        id="wizard-custom-amount"
-                        type="number"
-                        min={1000}
-                        max={100000}
-                        step={100}
-                        value={form.loanAmount}
-                        onChange={(e) =>
-                          updateField(
-                            'loanAmount',
-                            Math.max(1000, Math.min(100000, Number(e.target.value) || 1000))
-                          )
-                        }
-                        className="w-full h-12 pl-10 pr-4 rounded-xl border border-zinc-300 bg-white font-mono-data text-base font-bold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-[#A51C20]/25 focus:border-[#A51C20]"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <p className="text-xs font-semibold text-zinc-600 mb-2.5">
-                      Valor do Empréstimo:
-                    </p>
-                    <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 gap-2">
-                      {OFFICIAL_RATE_TABLE.map((row) => {
-                        const active = form.loanAmount === row.amount;
-                        return (
-                          <button
-                            key={row.amount}
-                            type="button"
-                            onClick={() => updateField('loanAmount', row.amount)}
-                            className={`h-12 px-2 rounded-xl border font-mono-data text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-                              active
-                                ? 'border-[#A51C20] bg-[#A51C20] text-white shadow-sm'
-                                : 'border-zinc-200 bg-zinc-50 text-zinc-800 hover:border-zinc-300 hover:bg-zinc-100'
-                            }`}
-                          >
-                            {row.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <p className="text-xs font-semibold text-zinc-600 mb-2.5">
-                    Em quantas vezes deseja pagar?
-                  </p>
-                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
-                    {INSTALLMENT_OPTIONS.map((count) => {
-                      const active = form.installments === count;
-                      return (
-                        <button
-                          key={count}
-                          type="button"
-                          onClick={() => updateField('installments', count)}
-                          className={`py-2.5 px-2 min-h-[48px] rounded-xl border flex items-center justify-center transition-all cursor-pointer ${
-                            active
-                              ? 'border-zinc-900 bg-zinc-900 text-white'
-                              : 'border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300 hover:bg-zinc-50'
-                          }`}
-                        >
-                          <span className="font-mono-data text-sm font-bold">{count}x</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t border-zinc-200">
-                  <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200">
-                    <p className="text-xs text-zinc-500">Valor Solicitado</p>
-                    <p className="font-mono-data text-xl font-extrabold text-zinc-900 mt-1">
-                      {formatCurrency(form.loanAmount)}
-                    </p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-red-50/50 border border-red-200">
-                    <p className="text-xs text-zinc-600">Parcela Mensal ({form.installments}x)</p>
-                    <p className="font-mono-data text-xl font-extrabold text-[#A51C20] mt-1">
-                      {formatCurrency(computedInstallment)}
-                    </p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200">
-                    <p className="text-xs text-zinc-500">1º Vencimento (30 dias)</p>
-                    <p className="font-mono-data text-xl font-extrabold text-zinc-900 mt-1">
-                      {new Date(`${autoFirstDueDate}T12:00:00`).toLocaleDateString('pt-BR')}
-                    </p>
-                    <p className="text-[11px] text-zinc-500 mt-0.5">
-                      Automático após 30 dias da assinatura
-                    </p>
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-zinc-200">
-                  <p className="text-xs font-semibold text-zinc-700 mb-2.5">
-                    Como deseja receber as faturas das parcelas? *
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    {(
-                      [
-                        { value: 'WhatsApp', label: 'WhatsApp (Fatura)' },
-                        { value: 'E-mail', label: 'E-mail' },
-                        { value: 'WhatsApp e E-mail', label: 'Os 2 (WhatsApp e E-mail)' },
-                      ] as { value: InvoiceDeliveryMethod; label: string }[]
-                    ).map((opt) => {
-                      const active = (form.invoiceDeliveryMethod || 'WhatsApp') === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => updateField('invoiceDeliveryMethod', opt.value)}
-                          className={`min-h-[46px] px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-                            active
-                              ? 'border-[#A51C20] bg-[#A51C20] text-white shadow-sm'
-                              : 'border-zinc-200 bg-zinc-50 text-zinc-800 hover:border-zinc-300 hover:bg-zinc-100'
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* ETAPA 2: DADOS PESSOAIS E ENDEREÇO */}
-            {step === 2 && (
               <>
                 <div className="pb-4 border-b border-zinc-200">
                   <h2 className="text-lg font-bold text-zinc-900">
                     Seus Dados e Endereço
                   </h2>
                   <p className="text-sm text-zinc-600 mt-0.5">
-                    Digite seu CEP para preencher o endereço automaticamente.
+                    Os valores e condições acordados já constam gravados no sistema de liberação e no WhatsApp oficial da empresa. Informe seus dados para assinatura do contrato.
                   </p>
                 </div>
 
@@ -750,16 +570,15 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
               </>
             )}
 
-            {/* ETAPA 3: BANCO E PIX */}
-            {step === 3 && (
+            {/* ETAPA 2: BANCO, PIX E ENVIO DAS FATURAS */}
+            {step === 2 && (
               <>
                 <div className="pb-4 border-b border-zinc-200">
                   <h2 className="text-lg font-bold text-zinc-900">
-                    Conta Bancária e PIX para Receber
+                    Conta Bancária e PIX para Recebimento
                   </h2>
                   <p className="text-sm text-zinc-600 mt-0.5">
-                    Onde deseja receber o valor de{' '}
-                    <strong className="font-mono-data text-zinc-900">{formatCurrency(form.loanAmount)}</strong>?
+                    Informe a conta de sua titularidade para liberação e como prefere receber as faturas mensais.
                   </p>
                 </div>
 
@@ -886,11 +705,54 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
                     />
                   </div>
                 </div>
+
+                {/* Envio de faturas + vencimento automático 30 dias */}
+                <div className="pt-5 border-t border-zinc-200 space-y-4">
+                  <div>
+                    <p className="text-xs font-semibold text-zinc-700 mb-2.5">
+                      Como deseja receber as faturas das parcelas? *
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {(
+                        [
+                          { value: 'WhatsApp', label: 'WhatsApp (Fatura)' },
+                          { value: 'E-mail', label: 'E-mail' },
+                          { value: 'WhatsApp e E-mail', label: 'Os 2 (WhatsApp e E-mail)' },
+                        ] as { value: InvoiceDeliveryMethod; label: string }[]
+                      ).map((opt) => {
+                        const active = (form.invoiceDeliveryMethod || 'WhatsApp') === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => updateField('invoiceDeliveryMethod', opt.value)}
+                            className={`min-h-[46px] px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                              active
+                                ? 'border-[#A51C20] bg-[#A51C20] text-white shadow-sm'
+                                : 'border-zinc-200 bg-zinc-50 text-zinc-800 hover:border-zinc-300 hover:bg-zinc-100'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                    <span className="text-zinc-600">
+                      1º vencimento automático após 30 dias da assinatura:
+                    </span>
+                    <span className="font-mono-data font-bold text-zinc-900 text-sm">
+                      {new Date(`${autoFirstDueDate}T12:00:00`).toLocaleDateString('pt-BR')}
+                    </span>
+                  </div>
+                </div>
               </>
             )}
 
-            {/* ETAPA 4: CONTRATO COMPLETO ABERTO E ASSINATURA */}
-            {step === 4 && (
+            {/* ETAPA 3: CONTRATO COMPLETO ABERTO E ASSINATURA */}
+            {step === 3 && (
               <>
                 <div className="pb-4 border-b border-zinc-200">
                   <h2 className="text-lg sm:text-xl font-bold text-zinc-900">
@@ -902,7 +764,7 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
                 </div>
 
                 {/* Documento Completo 100% Aberto (4 Páginas e 18 Cláusulas) */}
-                <ContractDocument data={currentFormWithCalculations} />
+                <ContractDocument data={currentFormForDoc} />
 
                 {/* Checkboxes */}
                 <div className="space-y-3">
@@ -964,7 +826,7 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
                 <div />
               )}
 
-              {step < 4 ? (
+              {step < 3 ? (
                 <button
                   type="button"
                   onClick={handleNext}
@@ -987,7 +849,7 @@ export const ContractWizard: React.FC<ContractWizardProps> = ({
                   ) : (
                     <>
                       <ShieldCheck className="w-5 h-5" />
-                      Assinar e Gerar QR Code
+                      Finalizar e Assinar Contrato
                     </>
                   )}
                 </button>

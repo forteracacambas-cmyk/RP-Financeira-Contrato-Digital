@@ -33,11 +33,11 @@ type AppView = 'home' | 'consult' | 'receipt' | 'panel';
 
 const INITIAL_FORM: LoanContractInput = {
   agentCode: '',
-  loanAmount: 10000,
-  installments: 24,
-  installmentValue: calculateInstallmentValue(10000, 24),
+  loanAmount: 0,
+  installments: 0,
+  installmentValue: 0,
   monthlyRatePercent: COMPANY_INFO.monthlyRatePercent,
-  totalPayable: Math.round(calculateInstallmentValue(10000, 24) * 24 * 100) / 100,
+  totalPayable: 0,
   firstDueDate: getAutoFirstDueDate(),
   invoiceDeliveryMethod: 'WhatsApp',
 
@@ -77,6 +77,8 @@ export default function App() {
   );
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [form, setForm] = useState<LoanContractInput>(INITIAL_FORM);
+  const [simAmount, setSimAmount] = useState<number>(10000);
+  const [simInstallments, setSimInstallments] = useState<number>(24);
   const [customAmountMode, setCustomAmountMode] = useState(false);
 
   // Authorized link state (?ref=...)
@@ -126,24 +128,26 @@ export default function App() {
   }, [showOpeningSplash]);
 
   const computedInstallment = useMemo(
-    () => calculateInstallmentValue(form.loanAmount, form.installments),
-    [form.loanAmount, form.installments]
+    () => calculateInstallmentValue(simAmount, simInstallments),
+    [simAmount, simInstallments]
   );
 
   const computedTotal = useMemo(
-    () => Math.round(computedInstallment * form.installments * 100) / 100,
-    [computedInstallment, form.installments]
+    () => Math.round(computedInstallment * simInstallments * 100) / 100,
+    [computedInstallment, simInstallments]
   );
 
   const currentFormWithCalculations: LoanContractInput = useMemo(
     () => ({
       ...form,
       agentCode: agentState.agentCode || form.agentCode,
+      loanAmount: 0,
+      installments: 0,
+      installmentValue: 0,
+      totalPayable: 0,
       firstDueDate: getAutoFirstDueDate(),
-      installmentValue: computedInstallment,
-      totalPayable: computedTotal,
     }),
-    [form, agentState.agentCode, computedInstallment, computedTotal]
+    [form, agentState.agentCode]
   );
 
   // Handle URL parameters on mount: ?contrato=... or ?ref=...
@@ -239,10 +243,13 @@ export default function App() {
                     ...INITIAL_FORM,
                     ...parsed.form,
                     agentCode: json.agentCode,
+                    loanAmount: 0,
+                    installments: 0,
+                    installmentValue: 0,
+                    totalPayable: 0,
                     firstDueDate: getAutoFirstDueDate(),
                   });
-                  setCustomAmountMode(Boolean(parsed.customAmountMode));
-                  setWizardStep(Math.min(4, Math.max(1, Number(parsed.step) || 1)));
+                  setWizardStep(Math.min(3, Math.max(1, Number(parsed.step) || 1)));
                   setResumedDraft(true);
                   setShowOpeningSplash(false);
                   return;
@@ -347,9 +354,6 @@ export default function App() {
   const validateBeforeSubmit = (): string | null => {
     if (agentState.status !== 'valid' || !agentState.agentCode) {
       return 'Link inválido ou expirado. Solicite um novo link para contratar.';
-    }
-    if (form.loanAmount < 1000 || form.loanAmount > 100000) {
-      return 'O valor do empréstimo deve estar entre R$ 1.000,00 e R$ 100.000,00.';
     }
     if (form.fullName.trim().length < 5) {
       return 'Informe seu nome completo conforme documento oficial.';
@@ -474,7 +478,7 @@ export default function App() {
               Você está iniciando seu Contrato de Empréstimo Pessoal
             </h1>
             <p className="text-sm text-zinc-600 leading-relaxed">
-              Preencha em 4 passos simples: escolha o valor, informe seus dados, conta para recebimento e assine na tela.
+              Preencha em 3 passos simples: informe seus dados pessoais, conta para recebimento e assine na tela.
             </p>
           </div>
 
@@ -626,10 +630,6 @@ export default function App() {
                 setStep={setWizardStep}
                 resumedDraft={resumedDraft}
                 onResetDraft={handleStartNewContract}
-                computedInstallment={computedInstallment}
-                computedTotal={computedTotal}
-                customAmountMode={customAmountMode}
-                setCustomAmountMode={setCustomAmountMode}
                 updateField={updateField}
                 onSubmit={handleSubmitContract}
                 submitting={submitting}
@@ -737,13 +737,13 @@ export default function App() {
                           min={1000}
                           max={100000}
                           step={500}
-                          value={form.loanAmount}
+                          value={simAmount}
                           onChange={(e) => {
                             const val = Math.max(
                               1000,
                               Math.min(100000, Number(e.target.value) || 1000)
                             );
-                            updateField('loanAmount', val);
+                            setSimAmount(val);
                           }}
                           className="w-full h-12 pl-10 pr-4 rounded-xl bg-zinc-800 border border-zinc-700 font-mono-data text-base font-bold text-white focus:outline-none focus:ring-2 focus:ring-[#A51C20]"
                         />
@@ -751,12 +751,12 @@ export default function App() {
                     ) : (
                       <div className="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-4 gap-1.5">
                         {OFFICIAL_RATE_TABLE.map((row) => {
-                          const active = form.loanAmount === row.amount;
+                          const active = simAmount === row.amount;
                           return (
                             <button
                               key={row.amount}
                               type="button"
-                              onClick={() => updateField('loanAmount', row.amount)}
+                              onClick={() => setSimAmount(row.amount)}
                               className={`py-2 px-1.5 min-h-[40px] rounded-lg text-xs font-mono-data font-semibold transition-colors cursor-pointer ${
                                 active
                                   ? 'bg-[#A51C20] text-white'
@@ -777,12 +777,12 @@ export default function App() {
                     </label>
                     <div className="grid grid-cols-4 sm:grid-cols-7 lg:grid-cols-4 gap-1.5">
                       {INSTALLMENT_OPTIONS.map((count) => {
-                        const active = form.installments === count;
+                        const active = simInstallments === count;
                         return (
                           <button
                             key={count}
                             type="button"
-                            onClick={() => updateField('installments', count)}
+                            onClick={() => setSimInstallments(count)}
                             className={`py-2 px-2 min-h-[40px] rounded-lg text-xs font-mono-data font-semibold transition-colors cursor-pointer ${
                               active
                                 ? 'bg-white text-zinc-900'
@@ -808,13 +808,13 @@ export default function App() {
                     <div className="text-right">
                       <p className="text-xs text-zinc-400">Plano</p>
                       <p className="font-mono-data text-sm font-semibold text-zinc-200 mt-0.5">
-                        {form.installments}x de {formatCurrency(computedInstallment)}
+                        {simInstallments}x de {formatCurrency(computedInstallment)}
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between text-xs text-zinc-400">
-                    <span>Valor solicitado: {formatCurrency(form.loanAmount)}</span>
+                    <span>Valor solicitado: {formatCurrency(simAmount)}</span>
                     <span>Total: {formatCurrency(computedTotal)}</span>
                   </div>
                 </div>

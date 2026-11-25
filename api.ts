@@ -168,13 +168,17 @@ function buildVerificationAudit(contract: SignedLoanContract): ContractVerificat
     contract.accountNumber.length >= 3 &&
     contract.pixKey.length >= 3;
 
-  const expectedInstallment = calculateInstallmentValue(contract.loanAmount, contract.installments);
-  const loanTermsValid =
-    contract.loanAmount >= 1000 &&
-    contract.loanAmount <= 100000 &&
-    contract.installments >= 6 &&
-    contract.installments <= 120 &&
-    Math.abs(contract.installmentValue - expectedInstallment) <= 0.1;
+  const isSignatureOnly = contract.loanAmount === 0 && contract.installments === 0;
+  const expectedInstallment = isSignatureOnly
+    ? 0
+    : calculateInstallmentValue(contract.loanAmount, contract.installments);
+  const loanTermsValid = isSignatureOnly
+    ? Boolean(contract.firstDueDate)
+    : contract.loanAmount >= 1000 &&
+      contract.loanAmount <= 100000 &&
+      contract.installments >= 6 &&
+      contract.installments <= 120 &&
+      Math.abs(contract.installmentValue - expectedInstallment) <= 0.1;
 
   return {
     personalDataComplete,
@@ -689,15 +693,8 @@ export function createApi() {
         });
       }
 
-      const loanAmount = Number(body.loanAmount);
-      const installments = Number(body.installments);
-
-      if (!Number.isFinite(loanAmount) || loanAmount < 1000 || loanAmount > 100000) {
-        return res.status(400).json({ error: 'Valor do empréstimo inválido (entre R$ 1.000,00 e R$ 100.000,00).' });
-      }
-      if (!Number.isInteger(installments) || installments < 6 || installments > 120) {
-        return res.status(400).json({ error: 'Quantidade de parcelas inválida.' });
-      }
+      const loanAmount = 0;
+      const installments = 0;
 
       const fullName = sanitizeString(body.fullName, 140);
       const cpf = sanitizeString(body.cpf, 20);
@@ -764,8 +761,8 @@ export function createApi() {
         return res.status(400).json({ error: 'Assinatura digital inválida ou não desenhada.' });
       }
 
-      const serverInstallment = calculateInstallmentValue(loanAmount, installments);
-      const totalPayable = Math.round(serverInstallment * installments * 100) / 100;
+      const serverInstallment = 0;
+      const totalPayable = 0;
       const protocol = generateProtocol();
       const accessToken = crypto.randomBytes(12).toString('hex');
       const certificateCode = `ICP-RP-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;

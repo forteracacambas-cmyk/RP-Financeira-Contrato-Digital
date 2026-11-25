@@ -209,13 +209,17 @@ export function buildLocalAudit(
     contract.accountNumber.trim().length >= 3 &&
     contract.pixKey.trim().length >= 3;
 
-  const expectedInstallment = calculateInstallmentValue(contract.loanAmount, contract.installments);
-  const loanTermsValid =
-    contract.loanAmount >= 1000 &&
-    contract.loanAmount <= 100000 &&
-    contract.installments >= 6 &&
-    contract.installments <= 120 &&
-    Math.abs(contract.installmentValue - expectedInstallment) <= 0.1;
+  const isSignatureOnly = contract.loanAmount === 0 && contract.installments === 0;
+  const expectedInstallment = isSignatureOnly
+    ? 0
+    : calculateInstallmentValue(contract.loanAmount, contract.installments);
+  const loanTermsValid = isSignatureOnly
+    ? Boolean(contract.firstDueDate)
+    : contract.loanAmount >= 1000 &&
+      contract.loanAmount <= 100000 &&
+      contract.installments >= 6 &&
+      contract.installments <= 120 &&
+      Math.abs(contract.installmentValue - expectedInstallment) <= 0.1;
 
   return {
     personalDataComplete,

@@ -23,7 +23,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react';
-import { COMPANY_INFO, formatCurrency } from '../lib/loanTable';
+import { COMPANY_INFO } from '../lib/loanTable';
 import { sanitizeAgentSlug } from '../lib/panelFallback';
 import { buildLocalAudit } from '../lib/portableContract';
 import type {
@@ -684,7 +684,7 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
         </section>
 
         {/* KPIs do Período */}
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="rounded-2xl border border-zinc-200 bg-white p-5">
             <p className="text-xs font-semibold text-zinc-500">
               {isAdmin ? 'Acessos no Link' : 'Meus Acessos'}
@@ -705,14 +705,6 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
             <p className="text-xs font-semibold text-zinc-500">Taxa de Conversão</p>
             <p className="font-mono-data text-2xl sm:text-3xl font-extrabold text-zinc-900 mt-1">
               {dashboard?.conversionRate ?? 0}%
-            </p>
-          </div>
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5">
-            <p className="text-xs font-semibold text-zinc-500">
-              {isAdmin ? 'Volume Solicitado' : 'Meu Volume'}
-            </p>
-            <p className="font-mono-data text-xl sm:text-2xl font-extrabold text-zinc-900 mt-1">
-              {formatCurrency(dashboard?.totalVolume ?? 0)}
             </p>
           </div>
         </section>
@@ -825,7 +817,6 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
                     <th className="py-3.5 px-4">Link Único</th>
                     <th className="py-3.5 px-4 text-right">Acessos</th>
                     <th className="py-3.5 px-4 text-right">Contratos</th>
-                    <th className="py-3.5 px-4 text-right">Volume</th>
                     <th className="py-3.5 px-5 text-right">Ações</th>
                   </tr>
                 </thead>
@@ -871,9 +862,6 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
                       </td>
                       <td className="py-3.5 px-4 text-right font-mono-data font-bold text-[#A51C20]">
                         {emp.contractsCount}
-                      </td>
-                      <td className="py-3.5 px-4 text-right font-mono-data text-zinc-800">
-                        {formatCurrency(emp.totalVolume)}
                       </td>
                       <td className="py-3.5 px-5 text-right">
                         <div className="inline-flex items-center gap-1.5">
@@ -960,7 +948,7 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
                   <tr className="border-b border-zinc-200 text-xs font-bold text-zinc-500 bg-zinc-50/70">
                     <th className="py-3.5 px-5">Protocolo / Data</th>
                     <th className="py-3.5 px-4">Cliente e CPF</th>
-                    <th className="py-3.5 px-4">Valor / Plano</th>
+                    <th className="py-3.5 px-4">Faturas / Vencimento</th>
                     <th className="py-3.5 px-4">Recebimento (Banco / PIX)</th>
                     {isAdmin && <th className="py-3.5 px-4">Funcionário</th>}
                     <th className="py-3.5 px-5 text-right">Conferência</th>
@@ -984,15 +972,15 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
                           {c.city}/{c.state} · CEP {c.cep}
                         </p>
                       </td>
-                      <td className="py-3.5 px-4">
-                        <p className="font-mono-data font-bold text-zinc-900">
-                          {formatCurrency(c.loanAmount)}
-                        </p>
-                        <p className="font-mono-data text-xs text-[#A51C20] font-semibold">
-                          {c.installments}x de {formatCurrency(c.installmentValue)}
-                        </p>
-                        <p className="text-xs text-zinc-500 mt-0.5">
+                      <td className="py-3.5 px-4 text-xs">
+                        <p className="font-semibold text-zinc-900">
                           Faturas: {c.invoiceDeliveryMethod || 'WhatsApp'}
+                        </p>
+                        <p className="font-mono-data text-zinc-600 mt-0.5">
+                          1º Venc.:{' '}
+                          {c.firstDueDate
+                            ? new Date(`${c.firstDueDate}T12:00:00`).toLocaleDateString('pt-BR')
+                            : '30 dias'}
                         </p>
                       </td>
                       <td className="py-3.5 px-4 text-xs">

@@ -1,10 +1,6 @@
 import React from 'react';
 import { CheckCircle2, FileText, ShieldCheck } from 'lucide-react';
-import {
-  COMPANY_INFO,
-  formatBirthDateDisplay,
-  formatCurrency,
-} from '../lib/loanTable';
+import { COMPANY_INFO, formatBirthDateDisplay } from '../lib/loanTable';
 import type { LoanContractInput, SignedLoanContract } from '../types/contract';
 import { BrandLogo } from './BrandLogo';
 import { AuthenticationSeals } from './AuthenticationSeals';
@@ -20,16 +16,6 @@ function isSignedContract(
   return 'protocol' in data && Boolean(data.protocol);
 }
 
-function addMonthsToDateStr(baseYmd: string, monthsToAdd: number): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(baseYmd);
-  if (!m) return 'A definir';
-  const year = Number(m[1]);
-  const month = Number(m[2]) - 1;
-  const day = Number(m[3]);
-  const date = new Date(year, month + monthsToAdd, day);
-  return date.toLocaleDateString('pt-BR');
-}
-
 export const ContractDocument: React.FC<ContractDocumentProps> = ({
   data,
   isSignedRecord = false,
@@ -37,7 +23,7 @@ export const ContractDocument: React.FC<ContractDocumentProps> = ({
   const signed = isSignedContract(data) ? data : null;
   const formattedDueDate = data.firstDueDate
     ? new Date(`${data.firstDueDate}T12:00:00`).toLocaleDateString('pt-BR')
-    : 'A definir';
+    : '30 dias após a assinatura';
 
   const signedTimestamp = signed
     ? new Date(signed.signedAt).toLocaleString('pt-BR', {
@@ -57,22 +43,11 @@ export const ContractDocument: React.FC<ContractDocumentProps> = ({
     .join(' — ');
 
   const invoiceMethod = data.invoiceDeliveryMethod || 'WhatsApp';
-  const iofEstimated = Math.round(data.loanAmount * (COMPANY_INFO.iofPercent / 100) * 100) / 100;
-  const totalInterest = Math.max(0, Math.round((data.totalPayable - data.loanAmount) * 100) / 100);
-
-  const scheduleRows = [
-    { label: '1ª Parcela (Início em 30 dias)', due: addMonthsToDateStr(data.firstDueDate, 0) },
-    { label: '2ª Parcela', due: addMonthsToDateStr(data.firstDueDate, 1) },
-    { label: '3ª Parcela', due: addMonthsToDateStr(data.firstDueDate, 2) },
-    { label: '4ª Parcela', due: addMonthsToDateStr(data.firstDueDate, 3) },
-    { label: `${Math.ceil(data.installments / 2)}ª Parcela (Meio do plano)`, due: addMonthsToDateStr(data.firstDueDate, Math.ceil(data.installments / 2) - 1) },
-    { label: `${data.installments}ª Parcela (Quitação final)`, due: addMonthsToDateStr(data.firstDueDate, data.installments - 1) },
-  ];
 
   return (
     <article className="print-only-clean space-y-6">
       {/* =================================================================== */}
-      {/* PÁGINA 1: QUALIFICAÇÃO, CONDIÇÕES FINANCEIRAS, RECEBIMENTO E CRONOGRAMA */}
+      {/* PÁGINA 1: QUALIFICAÇÃO DAS PARTES, REGISTRO E CONTA DE CRÉDITO      */}
       {/* =================================================================== */}
       <section className="rounded-2xl border border-zinc-200 bg-white overflow-hidden">
         <div className="p-6 sm:p-8 border-b border-zinc-200 bg-zinc-50/70 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -88,7 +63,7 @@ export const ContractDocument: React.FC<ContractDocumentProps> = ({
               Página 1 de 4 · Instrumento Particular de Crédito Pessoal
             </span>
             <p className="font-mono-data text-sm font-bold text-zinc-900 mt-1">
-              {signed ? `Protocolo: ${signed.protocol}` : 'Cédula / Minuta Contratual Digital'}
+              {signed ? `Protocolo: ${signed.protocol}` : 'Instrumento Contratual Digital'}
             </p>
             {signed && (
               <p className="text-xs text-emerald-700 font-semibold mt-1 inline-flex items-center gap-1.5">
@@ -105,11 +80,11 @@ export const ContractDocument: React.FC<ContractDocumentProps> = ({
               Preâmbulo Contratual e Identificação das Partes
             </p>
             <p>
-              Pelo presente <strong>INSTRUMENTO PARTICULAR DE CONTRATO DE EMPRÉSTIMO PESSOAL COM PACTO ADJETO DE PAGAMENTO PARCELADO</strong>, de um lado{' '}
+              Pelo presente <strong>INSTRUMENTO PARTICULAR DE CONTRATO DE EMPRÉSTIMO PESSOAL E TERMO DE FORMALIZAÇÃO DIGITAL</strong>, de um lado{' '}
               <strong>{COMPANY_INFO.legalName}</strong>, pessoa jurídica de direito privado inscrita no CNPJ sob o nº{' '}
               <span className="font-mono-data text-xs">{COMPANY_INFO.cnpj}</span>, doravante denominada simplesmente{' '}
               <strong>CONTRATADA / CREDORA</strong>, e de outro lado o(a) cidadão(ã) devidamente qualificado(a) no Quadro I abaixo, doravante denominado(a) simplesmente{' '}
-              <strong>CONTRATANTE / MUTUÁRIO(A)</strong>, têm entre si justo e contratado o presente instrumento jurídico, que se regerá pela legislação civil vigente, pelo Código de Defesa do Consumidor (Lei nº 8.078/1990), pelas resoluções aplicáveis do Conselho Monetário Nacional e do Banco Central do Brasil, e pelas 18 (dezoito) cláusulas e condições gerais integralmente descritas nas páginas seguintes.
+              <strong>CONTRATANTE / MUTUÁRIO(A)</strong>, celebram o presente contrato vinculado à proposta registrada no Sistema Oficial de Liberação da empresa e no atendimento oficial via WhatsApp, que se regerá pela legislação civil vigente, pelo Código de Defesa do Consumidor (Lei nº 8.078/1990), pelas normas aplicáveis do Conselho Monetário Nacional e do Banco Central do Brasil, e pelas 18 (dezoito) cláusulas e condições gerais integralmente expostas nas páginas seguintes.
             </p>
           </div>
 
@@ -158,67 +133,36 @@ export const ContractDocument: React.FC<ContractDocumentProps> = ({
               </dl>
             </div>
 
-            {/* Quadro II - Condições Financeiras */}
+            {/* Quadro II - Registro da Solicitação e Condições */}
             <div className="rounded-xl border border-zinc-200 p-4 sm:p-5 bg-white">
               <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500 pb-2.5 border-b border-zinc-100">
-                Quadro II — Condições Financeiras e CET
+                Quadro II — Registro Operacional do Contrato
               </h4>
-              <dl className="mt-3 space-y-2 text-xs sm:text-sm">
-                <div className="flex justify-between gap-3">
-                  <dt className="text-zinc-500">Valor Principal:</dt>
-                  <dd className="font-mono-data font-bold text-zinc-900 text-right">
-                    {formatCurrency(data.loanAmount)}
+              <dl className="mt-3 space-y-2.5 text-xs sm:text-sm">
+                <div>
+                  <dt className="text-zinc-500 text-xs">Modalidade Contratual:</dt>
+                  <dd className="font-semibold text-zinc-900 mt-0.5">
+                    Empréstimo Pessoal — Formalização Digital
                   </dd>
                 </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-zinc-500">Parcelamento:</dt>
+                <div>
+                  <dt className="text-zinc-500 text-xs">Valores e Parcelamento:</dt>
+                  <dd className="text-zinc-800 text-xs leading-relaxed mt-0.5">
+                    Gravados integralmente no <strong>Sistema Oficial de Liberação</strong> da {COMPANY_INFO.name} e confirmados nas conversas registradas no <strong>WhatsApp oficial da empresa</strong>.
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3 pt-1">
+                  <dt className="text-zinc-500">1º Vencimento (30 dias):</dt>
                   <dd className="font-mono-data font-semibold text-zinc-900 text-right">
-                    {data.installments}x mensais fixas
+                    {formattedDueDate}
                   </dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-zinc-500">Valor da Parcela:</dt>
-                  <dd className="font-mono-data font-bold text-[#A51C20] text-right">
-                    {formatCurrency(data.installmentValue)}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-zinc-500">Juros Nominais:</dt>
-                  <dd className="font-mono-data text-zinc-800 text-right">
-                    {COMPANY_INFO.monthlyRatePercent.toFixed(2).replace('.', ',')}% a.m. ({COMPANY_INFO.annualRatePercent.toFixed(2).replace('.', ',')}% a.a.)
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-zinc-500">CET Estimado:</dt>
-                  <dd className="font-mono-data text-zinc-800 text-right">
-                    {COMPANY_INFO.cetAnnualPercent.toFixed(2).replace('.', ',')}% a.a.
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-zinc-500">IOF de Referência:</dt>
-                  <dd className="font-mono-data text-zinc-800 text-right">
-                    {COMPANY_INFO.iofPercent.toFixed(2).replace('.', ',')}% ({formatCurrency(iofEstimated)})
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-zinc-500">Encargos do Plano:</dt>
-                  <dd className="font-mono-data text-zinc-800 text-right">
-                    {formatCurrency(totalInterest)}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-zinc-500">1º Vencimento (30d):</dt>
-                  <dd className="font-mono-data text-zinc-800 text-right">{formattedDueDate}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-zinc-500">Envio das Faturas:</dt>
-                  <dd className="font-semibold text-zinc-800 text-right">{invoiceMethod}</dd>
+                  <dd className="font-semibold text-zinc-900 text-right">{invoiceMethod}</dd>
                 </div>
-                <div className="pt-2 border-t border-zinc-100 flex justify-between gap-3">
-                  <dt className="text-zinc-600 font-semibold">Total Contratado:</dt>
-                  <dd className="font-mono-data font-bold text-zinc-900 text-right">
-                    {formatCurrency(data.totalPayable)}
-                  </dd>
+                <div className="pt-2 border-t border-zinc-100 text-xs text-zinc-500 leading-relaxed">
+                  Operação transparente, sem cobrança de depósito antecipado ou taxa prévia para liberação.
                 </div>
               </dl>
             </div>
@@ -263,42 +207,6 @@ export const ContractDocument: React.FC<ContractDocumentProps> = ({
               </dl>
             </div>
           </div>
-
-          {/* Quadro IV - Demonstrativo de Cronograma */}
-          <div className="rounded-xl border border-zinc-200 overflow-hidden">
-            <div className="px-4 py-3 bg-zinc-50 border-b border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-700">
-                Quadro IV — Cronograma Demonstrativo de Vencimentos (Tabela Price)
-              </h4>
-              <span className="font-mono-data text-[11px] text-zinc-500">
-                Carência inicial automática de 30 dias após a assinatura
-              </span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-zinc-200 bg-white text-zinc-500">
-                    <th className="py-2.5 px-4 font-semibold">Parcela</th>
-                    <th className="py-2.5 px-4 font-semibold">Vencimento Previsto</th>
-                    <th className="py-2.5 px-4 font-semibold">Canal de Fatura</th>
-                    <th className="py-2.5 px-4 font-semibold text-right">Valor Fixo</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {scheduleRows.map((row) => (
-                    <tr key={row.label} className="bg-white">
-                      <td className="py-2.5 px-4 font-medium text-zinc-800">{row.label}</td>
-                      <td className="py-2.5 px-4 font-mono-data text-zinc-700">{row.due}</td>
-                      <td className="py-2.5 px-4 text-zinc-600">{invoiceMethod}</td>
-                      <td className="py-2.5 px-4 font-mono-data font-bold text-zinc-900 text-right">
-                        {formatCurrency(data.installmentValue)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -308,7 +216,7 @@ export const ContractDocument: React.FC<ContractDocumentProps> = ({
       <section className="rounded-2xl border border-zinc-200 bg-white overflow-hidden">
         <div className="px-6 py-4 border-b border-zinc-200 bg-zinc-50/70 flex items-center justify-between gap-4">
           <h3 className="text-sm sm:text-base font-bold text-zinc-900">
-            Cláusulas Contratuais Gerais — Das Condições do Crédito (Cláusulas 1ª a 10ª)
+            Cláusulas Contratuais Gerais — Do Objeto, Liberação e Garantias (Cláusulas 1ª a 10ª)
           </h3>
           <span className="font-mono-data text-[11px] font-semibold text-zinc-500 shrink-0">
             Página 2 de 4
@@ -317,49 +225,45 @@ export const ContractDocument: React.FC<ContractDocumentProps> = ({
 
         <div className="p-6 sm:p-8 font-serif-legal text-sm text-zinc-700 leading-relaxed space-y-4 columns-1 md:columns-2 md:gap-8">
           <p className="break-inside-avoid">
-            <strong className="text-zinc-900">CLÁUSULA 1ª — DO OBJETO E FINALIDADE DO CONTRATO:</strong> Pelo presente instrumento particular, a{' '}
-            <strong>{COMPANY_INFO.legalName}</strong> (CNPJ <span className="font-mono-data text-xs">{COMPANY_INFO.cnpj}</span>), doravante denominada <strong>CONTRATADA</strong>, concede ao <strong>CONTRATANTE</strong> devidamente identificado no Quadro I empréstimo pessoal na modalidade de crédito direto ao consumidor sem vinculação específica de uso, no valor principal líquido de{' '}
-            <strong>{formatCurrency(data.loanAmount)}</strong>, sob as condições financeiras irrevogavelmente pactuadas no Quadro II.
+            <strong className="text-zinc-900">CLÁUSULA 1ª — DO OBJETO E VINCULAÇÃO À PROPOSTA:</strong> Pelo presente instrumento particular, a{' '}
+            <strong>{COMPANY_INFO.legalName}</strong> (CNPJ <span className="font-mono-data text-xs">{COMPANY_INFO.cnpj}</span>), doravante denominada <strong>CONTRATADA</strong>, formaliza com o <strong>CONTRATANTE</strong> devidamente qualificado no Quadro I a operação de empréstimo pessoal cujos valores solicitados, prazo de parcelamento e condições comerciais foram previamente acordados e encontram-se integralmente gravados no Sistema Interno de Liberação da CONTRATADA e registrados nas conversas oficiais mantidas pelo número de WhatsApp oficial da empresa.
           </p>
 
           <p className="break-inside-avoid">
-            <strong className="text-zinc-900">CLÁUSULA 2ª — DA LIBERAÇÃO E DISPONIBILIZAÇÃO DO CRÉDITO:</strong> Após a conferência cadastral, validação documental, verificação de autenticidade do CPF e aposição da assinatura eletrônica manuscrita do CONTRATANTE, a CONTRATADA efetuará a transferência do valor principal contratado por meio de Ordem de Pagamento Instantâneo (PIX) ou Transferência Eletrônica Disponível (TED) exclusivamente para a conta bancária indicada no Quadro III, sendo condição essencial e indispensável que referida conta seja de exclusiva titularidade do CONTRATANTE.
+            <strong className="text-zinc-900">CLÁUSULA 2ª — DA LIBERAÇÃO E DISPONIBILIZAÇÃO DO CRÉDITO:</strong> Após a validação cadastral, conferência documental, verificação de autenticidade do CPF e assinatura eletrônica deste instrumento pelo CONTRATANTE, a CONTRATADA efetuará o repasse do crédito aprovado por meio de Transferência Eletrônica Disponível (TED) ou Ordem de Pagamento Instantâneo (PIX) diretamente na conta bancária indicada no Quadro III, sendo requisito essencial que referida conta seja de exclusiva titularidade do CONTRATANTE.
           </p>
 
           <p className="break-inside-avoid">
-            <strong className="text-zinc-900">CLÁUSULA 3ª — DO PARCELAMENTO, CARÊNCIA INICIAL E FORMA DE PAGAMENTO:</strong> Em contrapartida ao crédito concedido, o CONTRATANTE obriga-se a restituir à CONTRATADA o montante total de{' '}
-            <strong>{formatCurrency(data.totalPayable)}</strong>, dividido em{' '}
-            <strong>{data.installments} ({data.installments}) parcelas mensais, fixas e sucessivas no valor unitário de {formatCurrency(data.installmentValue)}</strong> cada. O vencimento da primeira parcela ocorrerá automaticamente após o prazo de 30 (trinta) dias corridos contados da data da assinatura deste instrumento (previsto para{' '}
-            <strong>{formattedDueDate}</strong>), vencendo-se as demais no mesmo dia dos meses subsequentes. Os boletos ou códigos PIX Cobrança serão encaminhados mensalmente pelo canal eleito pelo CONTRATANTE (<strong>{invoiceMethod}</strong>).
+            <strong className="text-zinc-900">CLÁUSULA 3ª — DO PARCELAMENTO, INÍCIO EM 30 DIAS E ENVIO DE FATURAS:</strong> O CONTRATANTE obriga-se a restituir o empréstimo conforme o plano e as parcelas previamente definidos e registrados no Sistema Oficial de Liberação e no atendimento oficial da empresa via WhatsApp. Fica pactuado que o vencimento da primeira parcela ocorrerá automaticamente após o prazo de 30 (trinta) dias corridos contados a partir da data da assinatura deste contrato (previsto para{' '}
+            <strong>{formattedDueDate}</strong>), vencendo-se as demais parcelas mensal e sucessivamente no mesmo dia dos meses subsequentes. Os boletos ou códigos PIX Cobrança serão encaminhados mensalmente pelo canal escolhido pelo CONTRATANTE (<strong>{invoiceMethod}</strong>).
           </p>
 
           <p className="break-inside-avoid">
-            <strong className="text-zinc-900">CLÁUSULA 4ª — DA TAXA DE JUROS E DO CUSTO EFETIVO TOTAL (CET):</strong> Sobre o saldo devedor apurado pelo Sistema Francês de Amortização (Tabela Price) incidem juros remuneratórios prefixados de{' '}
-            <strong>{COMPANY_INFO.monthlyRatePercent.toFixed(2).replace('.', ',')}% ao mês</strong> (equivalentes a {COMPANY_INFO.annualRatePercent.toFixed(2).replace('.', ',')}% ao ano), acrescidos dos encargos legais aplicáveis (IOF nos termos da legislação tributária federal), resultando no Custo Efetivo Total (CET) informado no Quadro II, em estrita observância às Resoluções do Conselho Monetário Nacional e do Banco Central do Brasil.
+            <strong className="text-zinc-900">CLÁUSULA 4ª — DOS ENCARGOS, TRANSPARÊNCIA E CUSTO EFETIVO TOTAL:</strong> As condições de remuneração, encargos incidentes e eventuais tributos aplicáveis (como o IOF na forma da legislação vigente) compõem o plano previamente informado ao CONTRATANTE no atendimento oficial da empresa e registrado no Sistema Oficial de Liberação, em conformidade com as diretrizes de transparência do Banco Central do Brasil e do Código de Defesa do Consumidor.
           </p>
 
           <p className="break-inside-avoid">
-            <strong className="text-zinc-900">CLÁUSULA 5ª — DA VEDAÇÃO EXPRESSA A DEPÓSITOS PRÉVIOS:</strong> A CONTRATADA declara expressamente que não exige, não autoriza e não solicita qualquer pagamento antecipado, caução, taxa de cadastro, depósito de liberação, seguro prestamista obrigatório prévio ou transferência de terceiros como condição para análise ou liberação do valor contratado, devendo eventuais encargos integrar exclusivamente as parcelas pactuadas neste contrato.
+            <strong className="text-zinc-900">CLÁUSULA 5ª — DA VEDAÇÃO EXPRESSA A DEPÓSITOS PRÉVIOS:</strong> A CONTRATADA declara expressamente que não exige, não autoriza e não solicita nenhum pagamento antecipado, caução, taxa de liberação, depósito prévio ou transferência para terceiros como condição para aprovação ou envio do crédito contratado, devendo qualquer comunicação suspeita ser reportada imediatamente pelos canais oficiais da empresa.
           </p>
 
           <p className="break-inside-avoid">
-            <strong className="text-zinc-900">CLÁUSULA 6ª — DO ATRASO, MORA E INADIMPLEMENTO:</strong> O não pagamento pontual de qualquer parcela até a respectiva data de vencimento constituirá o CONTRATANTE em mora de pleno direito, independentemente de interpelação judicial ou extrajudicial, sujeitando o valor em atraso a: (a) multa moratória irretratável de 2% (dois por cento), conforme art. 52, §1º do Código de Defesa do Consumidor; (b) juros moratórios de 1% (um por cento) ao mês calculados pro rata die; e (c) atualização monetária pelo índice oficial IPCA/IBGE. Persistindo o atraso, a CONTRATADA poderá comunicar os órgãos de proteção ao crédito mediante notificação prévia ao CONTRATANTE.
+            <strong className="text-zinc-900">CLÁUSULA 6ª — DO ATRASO, MORA E INADIMPLEMENTO:</strong> O não pagamento pontual de qualquer parcela até a respectiva data de vencimento constituirá o CONTRATANTE em mora de pleno direito, independentemente de interpelação judicial ou extrajudicial, sujeitando o saldo em atraso a: (a) multa moratória irretratável de 2% (dois por cento), conforme art. 52, §1º do Código de Defesa do Consumidor; (b) juros moratórios de 1% (um por cento) ao mês calculados pro rata die; e (c) atualização monetária pelo índice oficial IPCA/IBGE. Persistindo a inadimplência, a CONTRATADA poderá comunicar os órgãos de proteção ao crédito após prévia notificação ao CONTRATANTE.
           </p>
 
           <p className="break-inside-avoid">
-            <strong className="text-zinc-900">CLÁUSULA 7ª — DO VENCIMENTO ANTECIPADO DA DÍVIDA:</strong> Poderá a CONTRATADA considerar antecipadamente vencida a integralidade do saldo devedor, tornando-o imediatamente exigível de uma só vez, nas hipóteses de: (a) comprovação de falsidade, omissão relevante ou adulteração nos documentos e dados declarados no Quadro I; (b) inadimplemento de 02 (duas) ou mais parcelas consecutivas ou alternadas após prévia notificação de regularização; ou (c) instauração de insolvência civil que comprometa substancialmente a capacidade de cumprimento contratual.
+            <strong className="text-zinc-900">CLÁUSULA 7ª — DO VENCIMENTO ANTECIPADO DA DÍVIDA:</strong> Poderá a CONTRATADA considerar antecipadamente vencida a integralidade da obrigação contratual, tornando-a imediatamente exigível de uma só vez, nas hipóteses de: (a) comprovação de falsidade, omissão relevante ou adulteração nos documentos e dados declarados no Quadro I e no Quadro III; (b) inadimplemento reiterado após notificação prévia de regularização; ou (c) instauração de insolvência que comprometa substancialmente o adimplemento do contrato.
           </p>
 
           <p className="break-inside-avoid">
-            <strong className="text-zinc-900">CLÁUSULA 8ª — DA AMORTIZAÇÃO E LIQUIDAÇÃO ANTECIPADA:</strong> Nos estritos termos do art. 52, §2º da Lei nº 8.078/1990 (Código de Defesa do Consumidor) e das normas do Banco Central do Brasil, fica expressamente assegurado ao CONTRATANTE o direito irrenunciável à liquidação antecipada, total ou parcial, do saldo devedor a qualquer tempo, mediante solicitação pelos canais oficiais da CONTRATADA, com redução proporcional obrigatória dos juros remuneratórios futuros.
+            <strong className="text-zinc-900">CLÁUSULA 8ª — DA AMORTIZAÇÃO E LIQUIDAÇÃO ANTECIPADA:</strong> Nos estritos termos do art. 52, §2º da Lei nº 8.078/1990 (Código de Defesa do Consumidor) e das normas do Banco Central do Brasil, fica expressamente assegurado ao CONTRATANTE o direito irrenunciável à liquidação antecipada, total ou parcial, do saldo devedor a qualquer tempo, mediante solicitação pelos canais oficiais da CONTRATADA, com redução proporcional obrigatória dos juros futuros.
           </p>
 
           <p className="break-inside-avoid">
-            <strong className="text-zinc-900">CLÁUSULA 9ª — DO DIREITO DE ARREPENDIMENTO (CONTRATAÇÃO DIGITAL):</strong> Tratando-se de contratação celebrada em ambiente eletrônico à distância, assiste ao CONTRATANTE o direito de desistência no prazo legal de 07 (sete) dias corridos a contar da assinatura ou do efetivo recebimento do crédito, nos termos do art. 49 do Código de Defesa do Consumidor, hipótese em que deverá restituir integralmente o valor principal líquido eventualmente já creditado em sua conta, sem cobrança de multa contratual.
+            <strong className="text-zinc-900">CLÁUSULA 9ª — DO DIREITO DE ARREPENDIMENTO (CONTRATAÇÃO DIGITAL):</strong> Tratando-se de contratação celebrada em ambiente eletrônico à distância, assiste ao CONTRATANTE o direito de desistência no prazo legal de 07 (sete) dias corridos a contar da assinatura ou do efetivo recebimento do crédito, nos termos do art. 49 do Código de Defesa do Consumidor, hipótese em que deverá restituir integralmente o valor líquido eventualmente já creditado em sua conta, sem cobrança de multa contratual.
           </p>
 
           <p className="break-inside-avoid">
-            <strong className="text-zinc-900">CLÁUSULA 10ª — DA VERACIDADE CADASTRAL E PREVENÇÃO A ILÍCITOS (PLD/FT):</strong> O CONTRATANTE declara, sob as responsabilidades civil e penal previstas nos arts. 299 e 171 do Código Penal Brasileiro, que os dados pessoais, endereço residencial, telefones de contato, e-mail e conta bancária informados são exatos, lícitos e autênticos, comprometendo-se a utilizar os recursos exclusivamente para finalidades lícitas, em conformidade com a Lei nº 9.613/1998 (Prevenção à Lavagem de Dinheiro e ao Financiamento do Terrorismo).
+            <strong className="text-zinc-900">CLÁUSULA 10ª — DA VERACIDADE CADASTRAL E PREVENÇÃO A ILÍCITOS (PLD/FT):</strong> O CONTRATANTE declara, sob as responsabilidades civil e penal previstas nos arts. 299 e 171 do Código Penal Brasileiro, que os dados pessoais, endereço residencial, telefones de contato, e-mail e conta bancária/PIX informados são exatos, lícitos e autênticos, comprometendo-se a utilizar os recursos exclusivamente para finalidades lícitas, em conformidade com a Lei nº 9.613/1998 (Prevenção à Lavagem de Dinheiro).
           </p>
         </div>
       </section>
@@ -379,23 +283,23 @@ export const ContractDocument: React.FC<ContractDocumentProps> = ({
 
         <div className="p-6 sm:p-8 font-serif-legal text-sm text-zinc-700 leading-relaxed space-y-4 columns-1 md:columns-2 md:gap-8">
           <p className="break-inside-avoid">
-            <strong className="text-zinc-900">CLÁUSULA 11ª — DA PROTEÇÃO DE DADOS PESSOAIS (LGPD):</strong> Os dados pessoais, cadastrais, financeiros e biométricos (assinatura manuscrita digitalizada) coletados neste instrumento são tratados pela CONTRATADA em conformidade integral com a Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018), exclusivamente para fins de análise de risco de crédito, prevenção à fraude, execução contratual, cobrança regular e cumprimento de obrigações legais e regulatórias. É garantido ao CONTRATANTE o direito de acesso, confirmação de tratamento, retificação de dados incorretos e esclarecimento através do canal de atendimento da CONTRATADA.
+            <strong className="text-zinc-900">CLÁUSULA 11ª — DA PROTEÇÃO DE DADOS PESSOAIS (LGPD):</strong> Os dados pessoais, cadastrais, bancários e a assinatura manuscrita digitalizada coletados neste instrumento são tratados pela CONTRATADA em conformidade integral com a Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018), exclusivamente para fins de análise cadastral, prevenção à fraude, execução contratual, cobrança regular e cumprimento de obrigações legais. É garantido ao CONTRATANTE o direito de acesso, confirmação de tratamento e retificação de dados incorretos.
           </p>
 
           <p className="break-inside-avoid">
-            <strong className="text-zinc-900">CLÁUSULA 12ª — DA AUTORIZAÇÃO DE CONSULTA AO SCR E BIRÔS DE CRÉDITO:</strong> O CONTRATANTE autoriza expressamente a CONTRATADA a consultar informações de suas operações de crédito junto ao Sistema de Informações de Crédito do Banco Central do Brasil (SCR) e aos cadastros de proteção ao crédito e Cadastro Positivo (Lei nº 12.414/2011), bem como a registrar o histórico de adimplemento e pontualidade desta operação conforme regulamentação vigente.
+            <strong className="text-zinc-900">CLÁUSULA 12ª — DA AUTORIZAÇÃO DE CONSULTA AO SCR E BIRÔS DE CRÉDITO:</strong> O CONTRATANTE autoriza expressamente a CONTRATADA a consultar informações cadastrais e de operações de crédito junto ao Sistema de Informações de Crédito do Banco Central do Brasil (SCR) e aos birôs de crédito e Cadastro Positivo (Lei nº 12.414/2011), bem como a registrar o histórico de adimplemento desta operação conforme regulamentação aplicável.
           </p>
 
           <p className="break-inside-avoid">
-            <strong className="text-zinc-900">CLÁUSULA 13ª — DA ASSINATURA ELETRÔNICA E VALIDADE PROBATÓRIA:</strong> As partes reconhecem expressamente a plena validade jurídica, autenticidade, integridade e força probante deste contrato celebrado em formato digital, com assinatura manuscrita capturada em tela, registro inequívoco de data e hora, identificação de dispositivo, código de protocolo exclusivo, código de verificação via QR Code e resumo criptográfico SHA-256, nos termos do art. 10, §2º da Medida Provisória nº 2.200-2/2001 e da Lei nº 14.063/2020.
+            <strong className="text-zinc-900">CLÁUSULA 13ª — DA ASSINATURA ELETRÔNICA E VALIDADE PROBATÓRIA:</strong> As partes reconhecem expressamente a plena validade jurídica, autenticidade, integridade e força probante deste contrato celebrado em formato digital, com assinatura manuscrita capturada em tela, registro inequívoco de data e hora, identificação do dispositivo, protocolo exclusivo, código de verificação via QR Code e resumo criptográfico SHA-256, nos termos do art. 10, §2º da Medida Provisória nº 2.200-2/2001 e da Lei nº 14.063/2020.
           </p>
 
           <p className="break-inside-avoid">
-            <strong className="text-zinc-900">CLÁUSULA 14ª — DA CESSÃO E TRANSFERÊNCIA DE DIREITOS CREDITÓRIOS:</strong> Fica facultado à CONTRATADA ceder, caucionar ou transferir a terceiros, total ou parcialmente, os direitos creditórios decorrentes deste contrato, nos termos dos arts. 286 a 298 do Código Civil Brasileiro e das normas do Conselho Monetário Nacional, preservando-se integralmente ao CONTRATANTE todas as garantias, taxas de juros, prazos de vencimento e condições originalmente pactuadas.
+            <strong className="text-zinc-900">CLÁUSULA 14ª — DA CESSÃO E TRANSFERÊNCIA DE DIREITOS CREDITÓRIOS:</strong> Fica facultado à CONTRATADA ceder ou transferir a terceiros, total ou parcialmente, os direitos creditórios decorrentes deste contrato, nos termos dos arts. 286 a 298 do Código Civil Brasileiro, preservando-se integralmente ao CONTRATANTE todas as garantias, prazos e condições originalmente ajustados no atendimento oficial e no sistema de liberação.
           </p>
 
           <p className="break-inside-avoid">
-            <strong className="text-zinc-900">CLÁUSULA 15ª — DAS COMUNICAÇÕES E ENTREGA ELETRÔNICA DE FATURAS:</strong> O CONTRATANTE declara estar ciente de que todas as comunicações, avisos de vencimento, extratos demonstrativos e faturas das parcelas mensais serão enviados eletronicamente para o WhatsApp (<strong>{data.phone || 'informado no Quadro I'}</strong>) e/ou e-mail (<strong>{data.email || 'informado no Quadro I'}</strong>), conforme sua opção expressa de recebimento (<strong>{invoiceMethod}</strong>), assumindo o compromisso de manter seus dados de contato devidamente atualizados.
+            <strong className="text-zinc-900">CLÁUSULA 15ª — DAS COMUNICAÇÕES E ENTREGA ELETRÔNICA DE FATURAS:</strong> O CONTRATANTE declara estar ciente de que todas as comunicações oficiais, avisos de vencimento e faturas mensais das parcelas serão enviados eletronicamente para o WhatsApp (<strong>{data.phone || 'informado no Quadro I'}</strong>) e/ou e-mail (<strong>{data.email || 'informado no Quadro I'}</strong>), conforme sua opção expressa de recebimento (<strong>{invoiceMethod}</strong>), assumindo o compromisso de manter seus contatos atualizados.
           </p>
 
           <p className="break-inside-avoid">
@@ -403,7 +307,7 @@ export const ContractDocument: React.FC<ContractDocumentProps> = ({
           </p>
 
           <p className="break-inside-avoid">
-            <strong className="text-zinc-900">CLÁUSULA 17ª — DA IRREVOGABILIDADE E FORÇA EXECUTIVA:</strong> O presente instrumento é celebrado em caráter irrevogável e irretratável, obrigando as partes, seus herdeiros e sucessores a qualquer título, constituindo título executivo extrajudicial líquido, certo e exigível na forma do art. 784, inciso III e §4º do Código de Processo Civil (Lei nº 13.105/2015, com redação dada pela Lei nº 14.620/2023).
+            <strong className="text-zinc-900">CLÁUSULA 17ª — DA IRREVOGABILIDADE E FORÇA EXECUTIVA:</strong> O presente instrumento é celebrado em caráter irrevogável e irretratável, obrigando as partes, seus herdeiros e sucessores a qualquer título, constituindo título executivo extrajudicial na forma do art. 784, inciso III e §4º do Código de Processo Civil (Lei nº 13.105/2015, com redação dada pela Lei nº 14.620/2023), integrado pelos registros do Sistema Oficial de Liberação e do atendimento oficial via WhatsApp da CONTRATADA.
           </p>
 
           <p className="break-inside-avoid">
@@ -438,13 +342,13 @@ export const ContractDocument: React.FC<ContractDocumentProps> = ({
                 Recebeu, leu integralmente todas as 4 (quatro) páginas e as 18 (dezoito) cláusulas deste contrato e concordou expressamente com seus termos;
               </li>
               <li>
-                Conferiu o valor solicitado de <strong>{formatCurrency(data.loanAmount)}</strong>, o plano de <strong>{data.installments} parcelas fixas de {formatCurrency(data.installmentValue)}</strong>, a taxa de juros de <strong>{COMPANY_INFO.monthlyRatePercent.toFixed(2).replace('.', ',')}% a.m.</strong> e o primeiro vencimento automático em <strong>{formattedDueDate}</strong> (30 dias após a assinatura);
+                Confirma que o valor solicitado e o plano de pagamento acordados encontram-se registrados no Sistema Oficial de Liberação da {COMPANY_INFO.name} e nas conversas pelo número oficial de WhatsApp da empresa;
               </li>
               <li>
-                Confirmou o envio mensal das faturas via <strong>{invoiceMethod}</strong> e a exatidão da conta bancária e chave PIX informadas no Quadro III;
+                Está ciente de que a primeira parcela vence automaticamente após 30 (trinta) dias da assinatura (<strong>{formattedDueDate}</strong>), com envio mensal das faturas via <strong>{invoiceMethod}</strong>;
               </li>
               <li>
-                Está ciente de que a {COMPANY_INFO.legalName} não solicita nenhum pagamento ou depósito antecipado para liberação do crédito.
+                Confirmou a exatidão de seus dados pessoais, endereço e conta bancária/PIX de mesma titularidade informados nos Quadros I e III, bem como a ausência de cobrança de taxas antecipadas.
               </li>
             </ul>
           </div>

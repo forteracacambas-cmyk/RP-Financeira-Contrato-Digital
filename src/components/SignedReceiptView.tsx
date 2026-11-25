@@ -10,7 +10,7 @@ import {
   FilePlus2,
   AlertCircle,
 } from 'lucide-react';
-import { COMPANY_INFO, formatCurrency } from '../lib/loanTable';
+import { COMPANY_INFO } from '../lib/loanTable';
 import type { ContractVerificationAudit, SignedLoanContract } from '../types/contract';
 import { ContractDocument } from './ContractDocument';
 
@@ -64,6 +64,10 @@ export const SignedReceiptView: React.FC<SignedReceiptViewProps> = ({
     }
   };
 
+  const formattedDueDate = contract.firstDueDate
+    ? new Date(`${contract.firstDueDate}T12:00:00`).toLocaleDateString('pt-BR')
+    : '30 dias após assinatura';
+
   const whatsappMessage = [
     `*CONTRATO ASSINADO — ${COMPANY_INFO.name}*`,
     `CNPJ: ${COMPANY_INFO.cnpj}`,
@@ -71,8 +75,8 @@ export const SignedReceiptView: React.FC<SignedReceiptViewProps> = ({
     `*Protocolo:* ${contract.protocol}`,
     `*Cliente:* ${contract.fullName}`,
     `*CPF:* ${contract.cpf}`,
-    `*Valor:* ${formatCurrency(contract.loanAmount)}`,
-    `*Plano:* ${contract.installments}x de ${formatCurrency(contract.installmentValue)}`,
+    `*1º Vencimento:* ${formattedDueDate}`,
+    `*Faturas:* ${contract.invoiceDeliveryMethod || 'WhatsApp'}`,
     `*Status:* Assinado Digitalmente e Autenticado`,
     ``,
     `Acesse o link abaixo para consultar o contrato completo, dados e assinatura:`,
@@ -94,7 +98,7 @@ export const SignedReceiptView: React.FC<SignedReceiptViewProps> = ({
     { label: 'Dados pessoais preenchidos', ok: audit.personalDataComplete },
     { label: 'CPF validado matematicamente', ok: audit.cpfValid },
     { label: 'Conta bancária e PIX informados', ok: audit.bankDataComplete },
-    { label: 'Valores e parcelas conforme tabela oficial', ok: audit.loanTermsValid },
+    { label: 'Registro contratual e vencimento validados', ok: audit.loanTermsValid },
     { label: 'Termos e cláusulas aceitos', ok: audit.clausesAccepted },
     { label: 'Assinatura digital manuscrita capturada', ok: audit.signaturePresent },
     { label: 'Integridade SHA-256 conferida', ok: audit.hashVerified },
