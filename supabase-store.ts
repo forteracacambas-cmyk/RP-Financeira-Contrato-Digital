@@ -1,13 +1,7 @@
 import type { PanelUserPublic, SignedLoanContract, VisitRecord } from './src/types/contract';
 
-export interface FirmQueueConfig {
-  mode: 'cycle' | 'today';
-  sinceIso: string;
-}
-
 export interface StoredUser extends PanelUserPublic {
   passwordHash: string;
-  firmQueueConfig?: FirmQueueConfig;
 }
 
 export class SupabaseStore {

@@ -2,10 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import {
   AlertCircle,
-  ArrowDown,
   ArrowLeft,
-  ArrowUp,
-  ArrowUpDown,
   Calendar,
   Check,
   CheckCircle2,
@@ -21,7 +18,6 @@ import {
   PlayCircle,
   QrCode,
   RefreshCw,
-  RotateCcw,
   Share2,
   Trash2,
   UserPlus,
@@ -83,12 +79,11 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
   const [empSuccess, setEmpSuccess] = useState('');
   const [empSubmitting, setEmpSubmitting] = useState(false);
 
-  // Copy, QR & Queue states
+  // Copy & QR states
   const [copiedCode, setCopiedCode] = useState('');
   const [showMyQr, setShowMyQr] = useState(false);
   const [myQrUrl, setMyQrUrl] = useState('');
   const [selectedContract, setSelectedContract] = useState<SignedLoanContract | null>(null);
-  const [queueUpdating, setQueueUpdating] = useState(false);
 
   // Check backend status and auto-restore saved session on mount
   useEffect(() => {
@@ -196,9 +191,8 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
     }
   }, [authMode, token, user, preset, customStart, customEnd, selectedAgentId, loadDashboard]);
 
-  // Generate QR code for current user's unique link (or Link da Firma for Admin)
-  const shareRefCode = user?.role === 'admin' ? 'firma' : user?.agentCode || '';
-  const myAgentLink = user ? `${window.location.origin}/?ref=${encodeURIComponent(shareRefCode)}` : '';
+  // Generate QR code for current user's unique link
+  const myAgentLink = user ? `${window.location.origin}/?ref=${encodeURIComponent(user.agentCode)}` : '';
   useEffect(() => {
     if (!showMyQr || !myAgentLink) return;
     QRCode.toDataURL(myAgentLink, { width: 220, margin: 2 })
@@ -348,34 +342,6 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
       setTimeout(() => setCopiedCode(''), 2200);
     } catch {
       // Clipboard fallback ignored
-    }
-  };
-
-  const handleFirmQueueAction = async (
-    payload:
-      | { action: 'reset' }
-      | { action: 'set_mode'; mode: 'cycle' | 'today' }
-      | { action: 'reorder'; employeeId: string; direction: 'up' | 'down' }
-  ) => {
-    setQueueUpdating(true);
-    try {
-      const res = await fetch('/api/panel/firm-queue', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        setEmpError('Não foi possível atualizar a fila da firma.');
-        return;
-      }
-      if (user) {
-        await loadDashboard(token, preset, customStart, customEnd, selectedAgentId);
-      }
-    } finally {
-      setQueueUpdating(false);
     }
   };
 
@@ -564,22 +530,16 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
-        {/* Link da Firma (Admin) ou Link Único do Funcionário */}
-        <section className="rounded-2xl border border-zinc-200 bg-white p-5 sm:p-6 space-y-5">
+        {/* Meu Link Único de Atendimento */}
+        <section className="rounded-2xl border border-zinc-200 bg-white p-5 sm:p-6">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
             <div className="space-y-1.5 min-w-0">
               <div className="flex items-center gap-2 text-sm font-bold text-zinc-900">
                 <Link2 className="w-4 h-4 text-[#A51C20]" />
-                <span>
-                  {isAdmin
-                    ? 'Link da Firma (Rodízio Igualitário de Fichas)'
-                    : 'Seu Link Único para Enviar aos Clientes'}
-                </span>
+                <span>Seu Link Único para Enviar aos Clientes</span>
               </div>
-              <p className="text-xs sm:text-sm text-zinc-600 max-w-3xl">
-                {isAdmin
-                  ? 'Link geral da empresa: distribui automaticamente em ordem (de cima para baixo e de baixo para cima). Quando você ativa um funcionário novo ou com menos fichas, ele recebe primeiro até igualar com os demais — ninguém recebe nem mais nem menos.'
-                  : 'Todo cliente que acessar e assinar por este link ficará registrado no seu painel com contagem de acessos e dados completos.'}
+              <p className="text-xs sm:text-sm text-zinc-600">
+                Todo cliente que acessar e assinar por este link ficará registrado no seu painel com contagem de acessos e dados completos.
               </p>
               <div className="mt-2 flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5 max-w-2xl">
                 <code className="font-mono-data text-xs text-zinc-800 truncate flex-1">
@@ -591,10 +551,10 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
             <div className="flex flex-wrap items-center gap-2.5 shrink-0">
               <button
                 type="button"
-                onClick={() => user && handleCopyAgentLink(shareRefCode)}
+                onClick={() => user && handleCopyAgentLink(user.agentCode)}
                 className="inline-flex items-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl border border-zinc-300 bg-white hover:bg-zinc-50 text-xs font-semibold text-zinc-800 cursor-pointer"
               >
-                {copiedCode === shareRefCode ? (
+                {copiedCode === user?.agentCode ? (
                   <>
                     <Check className="w-4 h-4 text-emerald-600" />
                     Link Copiado
@@ -602,7 +562,7 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
                 ) : (
                   <>
                     <Copy className="w-4 h-4" />
-                    {isAdmin ? 'Copiar Link da Firma' : 'Copiar Link'}
+                    Copiar Link
                   </>
                 )}
               </button>
@@ -626,92 +586,16 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
             </div>
           </div>
 
-          {isAdmin && dashboard?.firmQueue && (
-            <div className="pt-4 border-t border-zinc-200 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 flex-1">
-                <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5">
-                  <p className="text-[11px] font-semibold text-zinc-500">Próximo a receber ficha</p>
-                  <p className="text-sm font-bold text-emerald-700 mt-0.5 truncate">
-                    {dashboard.firmQueue.nextEmployeeName || 'Nenhum ativo'}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5">
-                  <p className="text-[11px] font-semibold text-zinc-500">Sentido da ordem atual</p>
-                  <p className="text-sm font-bold text-zinc-900 mt-0.5 inline-flex items-center gap-1.5">
-                    <ArrowUpDown className="w-3.5 h-3.5 text-[#A51C20]" />
-                    {dashboard.firmQueue.direction === 'down'
-                      ? 'Cima para Baixo ↓'
-                      : 'Baixo para Cima ↑'}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5">
-                  <p className="text-[11px] font-semibold text-zinc-500">Base de igualação</p>
-                  <p className="font-mono-data text-sm font-bold text-zinc-900 mt-0.5">
-                    Menor atual: {dashboard.firmQueue.minFichas} ficha(s)
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 shrink-0">
-                <div className="inline-flex rounded-xl border border-zinc-200 bg-zinc-100 p-1">
-                  <button
-                    type="button"
-                    disabled={queueUpdating}
-                    onClick={() => handleFirmQueueAction({ action: 'set_mode', mode: 'cycle' })}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                      dashboard.firmQueue.mode === 'cycle'
-                        ? 'bg-white text-zinc-900 shadow-sm'
-                        : 'text-zinc-600 hover:text-zinc-900'
-                    }`}
-                  >
-                    Ciclo Contínuo
-                  </button>
-                  <button
-                    type="button"
-                    disabled={queueUpdating}
-                    onClick={() => handleFirmQueueAction({ action: 'set_mode', mode: 'today' })}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                      dashboard.firmQueue.mode === 'today'
-                        ? 'bg-white text-zinc-900 shadow-sm'
-                        : 'text-zinc-600 hover:text-zinc-900'
-                    }`}
-                  >
-                    Somente Hoje
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  disabled={queueUpdating}
-                  onClick={() => handleFirmQueueAction({ action: 'reset' })}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[38px] rounded-xl border border-zinc-300 bg-white hover:bg-zinc-50 text-xs font-semibold text-zinc-800 cursor-pointer disabled:opacity-50"
-                  title="Zera a contagem do ciclo da fila para começar igual do zero"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  Zerar Fila
-                </button>
-              </div>
-            </div>
-          )}
-
           {showMyQr && myQrUrl && (
-            <div className="pt-5 border-t border-zinc-200 flex items-center gap-4">
+            <div className="mt-5 pt-5 border-t border-zinc-200 flex items-center gap-4">
               <img
                 src={myQrUrl}
-                alt="QR Code do link"
+                alt="QR Code do link exclusivo"
                 className="w-32 h-32 rounded-xl border border-zinc-200 p-1.5 bg-white"
               />
               <div className="text-xs text-zinc-600 space-y-1">
-                <p className="font-bold text-zinc-900">
-                  {isAdmin
-                    ? 'QR Code — Link da Firma (Rodízio Automático)'
-                    : `QR Code de Atendimento — ${user?.name}`}
-                </p>
-                <p>
-                  {isAdmin
-                    ? 'O cliente escaneia para abrir o contrato e cai automaticamente no próximo funcionário da fila.'
-                    : 'O cliente pode apontar a câmera do celular para abrir o contrato vinculado ao seu usuário.'}
-                </p>
+                <p className="font-bold text-zinc-900">QR Code de Atendimento — {user?.name}</p>
+                <p>O cliente pode apontar a câmera do celular para abrir o contrato vinculado ao seu usuário.</p>
               </div>
             </div>
           )}
@@ -924,190 +808,108 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
               )}
             </form>
 
-            {/* Tabela de Funcionários (Ordem da Fila da Firma) */}
+            {/* Tabela de Funcionários */}
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[880px] text-left border-collapse">
+              <table className="w-full min-w-[760px] text-left border-collapse">
                 <thead>
                   <tr className="border-b border-zinc-200 text-xs font-bold text-zinc-500 bg-white">
-                    <th className="py-3.5 px-4">Ordem</th>
-                    <th className="py-3.5 px-4">Funcionário</th>
+                    <th className="py-3.5 px-5">Funcionário</th>
                     <th className="py-3.5 px-4">Link Único</th>
-                    <th className="py-3.5 px-4 text-right">Fichas na Fila</th>
                     <th className="py-3.5 px-4 text-right">Acessos</th>
                     <th className="py-3.5 px-4 text-right">Contratos</th>
                     <th className="py-3.5 px-5 text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-200 text-sm">
-                  {(() => {
-                    const allRows = dashboard?.employees || [];
-                    const empOnlyRows = allRows.filter((e) => e.role === 'employee');
-                    return allRows.map((emp) => {
-                      const empIdx = empOnlyRows.findIndex((e) => e.id === emp.id);
-                      const isEmp = emp.role === 'employee';
-                      return (
-                        <tr
-                          key={emp.id}
-                          className={
-                            emp.isNextInQueue
-                              ? 'bg-emerald-50/50 hover:bg-emerald-50/80'
-                              : 'hover:bg-zinc-50'
-                          }
-                        >
-                          <td className="py-3.5 px-4">
-                            {isEmp ? (
-                              <div className="inline-flex items-center gap-1">
-                                <span className="font-mono-data text-xs font-bold text-zinc-500 w-6">
-                                  #{empIdx + 1}
-                                </span>
-                                <button
-                                  type="button"
-                                  disabled={queueUpdating || empIdx <= 0}
-                                  onClick={() =>
-                                    handleFirmQueueAction({
-                                      action: 'reorder',
-                                      employeeId: emp.id,
-                                      direction: 'up',
-                                    })
-                                  }
-                                  className="p-1 rounded border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-700 disabled:opacity-30 cursor-pointer"
-                                  title="Subir na ordem da fila"
-                                >
-                                  <ArrowUp className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={queueUpdating || empIdx >= empOnlyRows.length - 1}
-                                  onClick={() =>
-                                    handleFirmQueueAction({
-                                      action: 'reorder',
-                                      employeeId: emp.id,
-                                      direction: 'down',
-                                    })
-                                  }
-                                  className="p-1 rounded border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-700 disabled:opacity-30 cursor-pointer"
-                                  title="Descer na ordem da fila"
-                                >
-                                  <ArrowDown className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                  {(dashboard?.employees || []).map((emp) => (
+                    <tr key={emp.id} className="hover:bg-zinc-50">
+                      <td className="py-3.5 px-5">
+                        <p className="font-bold text-zinc-900">{emp.name}</p>
+                        <p className="font-mono-data text-xs text-zinc-500">
+                          @{emp.username} · {emp.role === 'admin' ? 'Admin Master' : emp.active ? 'Ativo' : 'Pausado'}
+                        </p>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2">
+                          <code className="font-mono-data text-xs text-zinc-700 bg-zinc-100 px-2 py-1 rounded">
+                            /?ref={emp.agentCode}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyAgentLink(emp.agentCode)}
+                            className="p-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-100 text-zinc-700 cursor-pointer"
+                            title="Copiar link do funcionário"
+                          >
+                            {copiedCode === emp.agentCode ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
                             ) : (
-                              <span className="text-[11px] font-medium text-zinc-400">Admin</span>
+                              <Copy className="w-3.5 h-3.5" />
                             )}
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="font-bold text-zinc-900">{emp.name}</p>
-                              {emp.isNextInQueue && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-wide">
-                                  Próximo da fila
-                                </span>
-                              )}
-                            </div>
-                            <p className="font-mono-data text-xs text-zinc-500">
-                              @{emp.username} ·{' '}
-                              {emp.role === 'admin' ? 'Admin Master' : emp.active ? 'Ativo' : 'Pausado'}
-                            </p>
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <div className="flex items-center gap-2">
-                              <code className="font-mono-data text-xs text-zinc-700 bg-zinc-100 px-2 py-1 rounded">
-                                /?ref={emp.agentCode}
-                              </code>
+                          </button>
+                          <a
+                            href={`/?ref=${encodeURIComponent(emp.agentCode)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-100 text-zinc-700"
+                            title="Abrir link"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-mono-data font-semibold text-zinc-900">
+                        {emp.visitsCount}
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-mono-data font-bold text-[#A51C20]">
+                        {emp.contractsCount}
+                      </td>
+                      <td className="py-3.5 px-5 text-right">
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedAgentId((prev) => (prev === emp.id ? '' : emp.id))}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer ${
+                              selectedAgentId === emp.id
+                                ? 'border-[#A51C20] bg-red-50 text-[#A51C20]'
+                                : 'border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700'
+                            }`}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            {selectedAgentId === emp.id ? 'Mostrando' : 'Ver clientes'}
+                          </button>
+                          {emp.role !== 'admin' && (
+                            <>
                               <button
                                 type="button"
-                                onClick={() => handleCopyAgentLink(emp.agentCode)}
-                                className="p-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-100 text-zinc-700 cursor-pointer"
-                                title="Copiar link do funcionário"
+                                onClick={() => handleToggleEmployee(emp.id, !emp.active)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-medium text-zinc-700 cursor-pointer"
                               >
-                                {copiedCode === emp.agentCode ? (
-                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                {emp.active ? (
+                                  <>
+                                    <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
+                                    Pausar
+                                  </>
                                 ) : (
-                                  <Copy className="w-3.5 h-3.5" />
+                                  <>
+                                    <PlayCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                    Ativar
+                                  </>
                                 )}
                               </button>
-                              <a
-                                href={`/?ref=${encodeURIComponent(emp.agentCode)}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-100 text-zinc-700"
-                                title="Abrir link"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </a>
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4 text-right">
-                            {isEmp ? (
-                              <div>
-                                <span className="font-mono-data font-bold text-zinc-900">
-                                  {emp.queueFichasCount ?? 0}
-                                </span>
-                                {(emp.queuePendingCount ?? 0) > 0 && (
-                                  <p className="text-[11px] font-medium text-amber-700">
-                                    +{emp.queuePendingCount} em preenchimento
-                                  </p>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-xs text-zinc-400">—</span>
-                            )}
-                          </td>
-                          <td className="py-3.5 px-4 text-right font-mono-data font-semibold text-zinc-900">
-                            {emp.visitsCount}
-                          </td>
-                          <td className="py-3.5 px-4 text-right font-mono-data font-bold text-[#A51C20]">
-                            {emp.contractsCount}
-                          </td>
-                          <td className="py-3.5 px-5 text-right">
-                            <div className="inline-flex items-center gap-1.5">
                               <button
                                 type="button"
-                                onClick={() => setSelectedAgentId((prev) => (prev === emp.id ? '' : emp.id))}
-                                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer ${
-                                  selectedAgentId === emp.id
-                                    ? 'border-[#A51C20] bg-red-50 text-[#A51C20]'
-                                    : 'border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700'
-                                }`}
+                                onClick={() => handleDeleteEmployee(emp.id)}
+                                className="p-1.5 rounded-lg border border-zinc-200 hover:bg-red-50 text-red-600 cursor-pointer"
+                                title="Excluir funcionário"
                               >
-                                <Eye className="w-3.5 h-3.5" />
-                                {selectedAgentId === emp.id ? 'Mostrando' : 'Ver clientes'}
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
-                              {emp.role !== 'admin' && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleToggleEmployee(emp.id, !emp.active)}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-medium text-zinc-700 cursor-pointer"
-                                  >
-                                    {emp.active ? (
-                                      <>
-                                        <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
-                                        Pausar
-                                      </>
-                                    ) : (
-                                      <>
-                                        <PlayCircle className="w-3.5 h-3.5 text-emerald-600" />
-                                        Ativar
-                                      </>
-                                    )}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteEmployee(emp.id)}
-                                    className="p-1.5 rounded-lg border border-zinc-200 hover:bg-red-50 text-red-600 cursor-pointer"
-                                    title="Excluir funcionário"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    });
-                  })()}
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -1196,11 +998,6 @@ export const PanelView: React.FC<PanelViewProps> = ({ onBackToSite }) => {
                           <p className="font-mono-data text-zinc-500">
                             {c.agentCode ? `?ref=${c.agentCode}` : '—'}
                           </p>
-                          {c.viaFirm && (
-                            <p className="text-[11px] font-semibold text-emerald-700 mt-0.5">
-                              Via Link da Firma
-                            </p>
-                          )}
                         </td>
                       )}
                       <td className="py-3.5 px-5 text-right">

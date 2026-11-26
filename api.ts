@@ -5,7 +5,6 @@ import { calculateInstallmentValue, COMPANY_INFO, isValidBirthDate, isValidCPF, 
 import type {
   ContractVerificationAudit,
   DashboardEmployeeStat,
-  FirmQueueSummary,
   InvoiceDeliveryMethod,
   LoanContractInput,
   PanelUserPublic,
@@ -14,7 +13,7 @@ import type {
   VisitRecord,
 } from './src/types/contract.ts';
 
-import type { FirmQueueConfig, StoredUser } from './supabase-store.ts';
+import type { StoredUser } from './supabase-store.ts';
 
 interface ApiConfig {
   SUPABASE_BACKEND_SECRET?: string;
@@ -106,7 +105,7 @@ function verifySessionToken(token: string, secret: string): { sub: string; usr: 
 }
 
 function toPublicUser(user: StoredUser): PanelUserPublic {
-  const { passwordHash: _ignored, firmQueueConfig: _queueCfg, ...pub } = user;
+  const { passwordHash: _ignored, ...pub } = user;
   return pub;
 }
 
@@ -311,158 +310,6 @@ function deduplicateVisits(visits: VisitRecord[], tzOffsetMinutes?: number): Vis
 }
 
 const recentVisitCache = new Map<string, number>();
-const inFlightFirmBoost = new Map<string, { count: number; expiresAt: number }>();
-
-const DEFAULT_FIRM_QUEUE_CONFIG: FirmQueueConfig = {
-  mode: 'cycle',
-  sinceIso: '2000-01-01T00:00:00.000Z',
-};
-
-function getFirmQueueConfig(allUsers: StoredUser[]): FirmQueueConfig {
-  const admin = allUsers.find((u) => u.role === 'admin' && u.firmQueueConfig);
-  const cfg = admin?.firmQueueConfig;
-  if (cfg && (cfg.mode === 'cycle' || cfg.mode === 'today') && typeof cfg.sinceIso === 'string') {
-    return cfg;
-  }
-  return DEFAULT_FIRM_QUEUE_CONFIG;
-}
-
-function sortEmployeesForQueue(allUsers: StoredUser[]): StoredUser[] {
-  return allUsers
-    .filter((u) => u.role === 'employee')
-    .sort((a, b) => {
-      const oa = typeof a.queueOrder === 'number' ? a.queueOrder : Number.MAX_SAFE_INTEGER;
-      const ob = typeof b.queueOrder === 'number' ? b.queueOrder : Number.MAX_SAFE_INTEGER;
-      if (oa !== ob) return oa - ob;
-      const ca = new Date(a.createdAt).getTime();
-      const cb = new Date(b.createdAt).getTime();
-      if (ca !== cb) return ca - cb;
-      return a.id.localeCompare(b.id);
-    });
-}
-
-function getQueueWindowStartMs(config: FirmQueueConfig, tzOffsetMinutes?: number): number {
-  if (config.mode === 'today') {
-    return getDateRangeBounds('today', undefined, undefined, tzOffsetMinutes).startMs;
-  }
-  const parsed = Date.parse(config.sinceIso);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function getInFlightBoost(agentId: string, nowMs: number): number {
-  const entry = inFlightFirmBoost.get(agentId);
-  if (!entry || entry.expiresAt <= nowMs) {
-    if (entry) inFlightFirmBoost.delete(agentId);
-    return 0;
-  }
-  return entry.count;
-}
-
-function recordInFlightBoost(agentId: string, nowMs: number): void {
-  const current = getInFlightBoost(agentId, nowMs);
-  inFlightFirmBoost.set(agentId, { count: current + 1, expiresAt: nowMs + 5000 });
-}
-
-interface FirmQueueEvaluation {
-  summary: FirmQueueSummary;
-  nextAgent: StoredUser | null;
-  statsByAgentId: Map<string, { contractsCount: number; pendingCount: number; effectiveLoad: number }>;
-}
-
-function computeFirmQueueState(
-  allUsers: StoredUser[],
-  visits: VisitRecord[],
-  contracts: SignedLoanContract[],
-  config: FirmQueueConfig,
-  nowMs: number,
-  tzOffsetMinutes?: number
-): FirmQueueEvaluation {
-  const sortedEmployees = sortEmployeesForQueue(allUsers);
-  const activeEmployees = sortedEmployees.filter((u) => u.active);
-  const pool =
-    activeEmployees.length > 0
-      ? activeEmployees
-      : allUsers.filter((u) => u.role === 'admin' && u.active);
-
-  const queueStartMs = getQueueWindowStartMs(config, tzOffsetMinutes);
-  const statsByAgentId = new Map<
-    string,
-    { contractsCount: number; pendingCount: number; effectiveLoad: number }
-  >();
-
-  // Count fichas (signed contracts) for all employees so paused/inactive ones still show accurate counts
-  for (const emp of sortedEmployees) {
-    const contractsCount = contracts.filter(
-      (c) => c.agentId === emp.id && new Date(c.signedAt).getTime() >= queueStartMs
-    ).length;
-    statsByAgentId.set(emp.id, { contractsCount, pendingCount: 0, effectiveLoad: contractsCount });
-  }
-
-  if (pool.length === 0) {
-    return {
-      summary: {
-        mode: config.mode,
-        sinceIso: config.sinceIso,
-        direction: 'down',
-        nextEmployeeId: null,
-        nextEmployeeName: null,
-        nextEmployeeCode: null,
-        minFichas: 0,
-        activeCount: 0,
-      },
-      nextAgent: null,
-      statsByAgentId,
-    };
-  }
-
-  const FIVE_MIN = 5 * 60 * 1000;
-  const entries = pool.map((emp) => {
-    const contractsCount = contracts.filter(
-      (c) => c.agentId === emp.id && new Date(c.signedAt).getTime() >= queueStartMs
-    ).length;
-    const recentFirmVisits = visits.filter(
-      (v) =>
-        v.agentId === emp.id &&
-        v.viaFirm &&
-        nowMs - new Date(v.visitedAt).getTime() <= FIVE_MIN &&
-        new Date(v.visitedAt).getTime() >= queueStartMs
-    ).length;
-    const recentFirmContracts = contracts.filter(
-      (c) =>
-        c.agentId === emp.id &&
-        c.viaFirm &&
-        nowMs - new Date(c.signedAt).getTime() <= FIVE_MIN &&
-        new Date(c.signedAt).getTime() >= queueStartMs
-    ).length;
-    const pendingCount =
-      Math.max(0, recentFirmVisits - recentFirmContracts) + getInFlightBoost(emp.id, nowMs);
-    const effectiveLoad = contractsCount + pendingCount;
-
-    statsByAgentId.set(emp.id, { contractsCount, pendingCount, effectiveLoad });
-    return { emp, contractsCount, pendingCount, effectiveLoad };
-  });
-
-  const minLoad = Math.min(...entries.map((e) => e.effectiveLoad));
-  const minContracts = Math.min(...entries.map((e) => e.contractsCount));
-  const direction: 'down' | 'up' = minLoad % 2 === 0 ? 'down' : 'up';
-  const candidates = entries.filter((e) => e.effectiveLoad === minLoad);
-  const chosen = direction === 'down' ? candidates[0] : candidates[candidates.length - 1];
-
-  return {
-    summary: {
-      mode: config.mode,
-      sinceIso: config.sinceIso,
-      direction,
-      nextEmployeeId: chosen.emp.id,
-      nextEmployeeName: chosen.emp.name,
-      nextEmployeeCode: chosen.emp.agentCode,
-      minFichas: minContracts,
-      activeCount: activeEmployees.length,
-    },
-    nextAgent: chosen.emp,
-    statsByAgentId,
-  };
-}
 
 export function createApi() {
   const app = new Hono<{ Bindings: ApiConfig }>();
@@ -608,73 +455,22 @@ export function createApi() {
     return res.json({ user: toPublicUser(req.authUser!) });
   }, true);
 
-  // Validate agent link (or Link da Firma equalized queue) & log visit (deduplicated per IP within 24h)
+  // Validate agent link & log visit (deduplicated per IP within 24h)
   route('POST', '/api/visits', async (req, res) => {
     const rawCode = sanitizeString(req.body?.agentCode, 50);
     const agentCode = sanitizeSlug(rawCode);
-    const preferredAgentCode = sanitizeSlug(sanitizeString(req.body?.preferredAgentCode, 50));
     if (!agentCode) {
       return res.status(400).json({ valid: false, error: 'Código de atendimento inválido.' });
     }
-
-    const nowMs = Date.now();
-    const isFirmLink = agentCode === 'firma';
-    let agent: StoredUser | null = null;
-    let firmIpHash: string | undefined;
-
-    if (isFirmLink) {
-      const allUsers = await req.db.users();
-      const config = getFirmQueueConfig(allUsers);
-      const queueStartMs = getQueueWindowStartMs(config);
-      const window24hMs = nowMs - 24 * 60 * 60 * 1000;
-      const overallBegin = new Date(Math.min(window24hMs, queueStartMs)).toISOString();
-      const overallEnd = new Date(nowMs + 60 * 1000).toISOString();
-      const allActivity = await req.db.activity(overallBegin, overallEnd, null);
-
-      firmIpHash = hashVisitorIp(
-        'firma',
-        req.clientIp,
-        req.headers['user-agent'],
-        req.config.SESSION_SECRET!
-      );
-
-      // 1) Reuse active preferred agent when resuming an unfinished draft on this device
-      const activePool = sortEmployeesForQueue(allUsers).filter((u) => u.active);
-      const fallbackPool =
-        activePool.length > 0 ? activePool : allUsers.filter((u) => u.role === 'admin' && u.active);
-
-      if (preferredAgentCode) {
-        agent = fallbackPool.find((u) => u.agentCode === preferredAgentCode) ?? null;
-      }
-
-      // 2) Otherwise distribute fairly using equalized serpentine order (catch up fewest fichas first)
-      if (!agent) {
-        const evalResult = computeFirmQueueState(
-          allUsers,
-          allActivity.visits,
-          allActivity.contracts,
-          config,
-          nowMs
-        );
-        agent = evalResult.nextAgent;
-      }
-
-      if (!agent) {
-        return res.status(404).json({
-          valid: false,
-          error: 'Nenhum consultor ativo disponível no link da empresa no momento.',
-        });
-      }
-    } else {
-      agent = (await req.db.activeAgent(agentCode)) ?? null;
-      if (!agent) {
-        return res.status(404).json({
-          valid: false,
-          error: 'Link de atendimento inválido ou desativado.',
-        });
-      }
+    const agent = await req.db.activeAgent(agentCode);
+    if (!agent) {
+      return res.status(404).json({
+        valid: false,
+        error: 'Link de atendimento inválido ou desativado.',
+      });
     }
 
+    const nowMs = Date.now();
     const ipHash = hashVisitorIp(
       agent.id,
       req.clientIp,
@@ -693,7 +489,6 @@ export function createApi() {
     if (cachedExp && cachedExp > nowMs) {
       return res.status(200).json({
         valid: true,
-        viaFirm: isFirmLink,
         agentName: agent.name,
         agentCode: agent.agentCode,
         counted: false,
@@ -709,7 +504,6 @@ export function createApi() {
       recentVisitCache.set(cacheKey, nowMs + 10 * 60 * 1000);
       return res.status(200).json({
         valid: true,
-        viaFirm: isFirmLink,
         agentName: agent.name,
         agentCode: agent.agentCode,
         counted: false,
@@ -717,16 +511,12 @@ export function createApi() {
     }
 
     recentVisitCache.set(cacheKey, nowMs + 10 * 60 * 1000);
-    if (isFirmLink) {
-      recordInFlightBoost(agent.id, nowMs);
-    }
     const visit: VisitRecord = {
       id: crypto.randomUUID(),
       agentId: agent.id,
       agentCode: agent.agentCode,
       visitedAt: new Date(nowMs).toISOString(),
       ipHash,
-      ...(isFirmLink ? { viaFirm: true, firmIpHash } : {}),
     };
     try {
       await req.db.insertVisit(visit);
@@ -737,7 +527,6 @@ export function createApi() {
 
     return res.status(201).json({
       valid: true,
-      viaFirm: isFirmLink,
       agentName: agent.name,
       agentCode: agent.agentCode,
       counted: true,
@@ -758,36 +547,12 @@ export function createApi() {
       authUser.role === 'admin' ? sanitizeString(req.query.agentId, 60) : authUser.id;
 
     const { startMs, endMs } = getDateRangeBounds(preset, customStart, customEnd, tzOffset);
-    const nowMs = Date.now();
+
     const db = req.db;
-
-    let allUsers: StoredUser[] = [authUser];
-    let queueConfig = DEFAULT_FIRM_QUEUE_CONFIG;
-    let queueStartMs = startMs;
-
-    if (authUser.role === 'admin') {
-      allUsers = await db.users();
-      queueConfig = getFirmQueueConfig(allUsers);
-      queueStartMs = getQueueWindowStartMs(queueConfig, tzOffset);
-    }
-
-    const overallBeginMs = authUser.role === 'admin' ? Math.min(startMs, queueStartMs) : startMs;
-    const overallEndMs = authUser.role === 'admin' ? Math.max(endMs, nowMs + 60 * 1000) : endMs;
+    const begin = new Date(startMs).toISOString();
+    const end = new Date(endMs).toISOString();
     const scope = authUser.role === 'admin' ? null : authUser.id;
-    const allActivity = await db.activity(
-      new Date(overallBeginMs).toISOString(),
-      new Date(overallEndMs).toISOString(),
-      scope
-    );
-
-    const rawVisitsInRange = allActivity.visits.filter((v) => {
-      const t = new Date(v.visitedAt).getTime();
-      return t >= startMs && t <= endMs;
-    });
-    const contractsInRange = allActivity.contracts.filter((c) => {
-      const t = new Date(c.signedAt).getTime();
-      return t >= startMs && t <= endMs;
-    });
+    const { visits: rawVisitsInRange, contracts: contractsInRange } = await db.activity(begin, end, scope);
     const visitsInRange = deduplicateVisits(rawVisitsInRange, tzOffset);
 
     const filteredVisits = filterAgentId
@@ -799,40 +564,20 @@ export function createApi() {
         : contractsInRange
     ).sort((a, b) => new Date(b.signedAt).getTime() - new Date(a.signedAt).getTime());
 
-    const firmEval =
+    const visibleUsers =
       authUser.role === 'admin'
-        ? computeFirmQueueState(
-            allUsers,
-            allActivity.visits,
-            allActivity.contracts,
-            queueConfig,
-            nowMs,
-            tzOffset
-          )
-        : null;
-
-    const visibleUsers: StoredUser[] =
-      authUser.role === 'admin'
-        ? [...sortEmployeesForQueue(allUsers), ...allUsers.filter((u) => u.role === 'admin')]
+        ? await db.users()
         : [authUser];
 
     const employeesStats: DashboardEmployeeStat[] = visibleUsers.map((u) => {
       const empVisits = visitsInRange.filter((v) => v.agentId === u.id).length;
       const empContracts = contractsInRange.filter((c) => c.agentId === u.id);
       const empVolume = empContracts.reduce((sum, c) => sum + c.loanAmount, 0);
-      const qStat = firmEval?.statsByAgentId.get(u.id);
       return {
         ...toPublicUser(u),
         visitsCount: empVisits,
         contractsCount: empContracts.length,
         totalVolume: empVolume,
-        ...(qStat
-          ? {
-              queueFichasCount: qStat.contractsCount,
-              queuePendingCount: qStat.pendingCount,
-              isNextInQueue: firmEval?.summary.nextEmployeeId === u.id,
-            }
-          : {}),
       };
     });
 
@@ -850,65 +595,7 @@ export function createApi() {
       conversionRate,
       employees: employeesStats,
       contracts: filteredContracts,
-      ...(firmEval ? { firmQueue: firmEval.summary } : {}),
     });
-  }, true);
-
-  // Admin Master: Manage Firm Queue (Reset cycle, change mode, reorder employees)
-  route('POST', '/api/panel/firm-queue', async (req, res) => {
-    if (req.authUser!.role !== 'admin') {
-      return res.status(403).json({ error: 'Acesso restrito ao Administrador Master.' });
-    }
-    const action = sanitizeString(req.body?.action, 30);
-
-    if (action === 'reset') {
-      const nextCfg: FirmQueueConfig = {
-        mode: 'cycle',
-        sinceIso: new Date().toISOString(),
-      };
-      await req.db.updateUser(req.authUser!.id, { firmQueueConfig: nextCfg });
-      return res.json({ ok: true, firmQueueConfig: nextCfg });
-    }
-
-    if (action === 'set_mode') {
-      const mode = req.body?.mode === 'today' ? 'today' : 'cycle';
-      const allUsers = await req.db.users();
-      const existing = getFirmQueueConfig(allUsers);
-      const nextCfg: FirmQueueConfig = {
-        mode,
-        sinceIso: existing.sinceIso || new Date().toISOString(),
-      };
-      await req.db.updateUser(req.authUser!.id, { firmQueueConfig: nextCfg });
-      return res.json({ ok: true, firmQueueConfig: nextCfg });
-    }
-
-    if (action === 'reorder') {
-      const employeeId = sanitizeString(req.body?.employeeId, 60);
-      const direction = req.body?.direction === 'up' ? 'up' : req.body?.direction === 'down' ? 'down' : null;
-      if (!employeeId || !direction) {
-        return res.status(400).json({ error: 'Informe o funcionário e a direção da fila.' });
-      }
-      const allUsers = await req.db.users();
-      const ordered = sortEmployeesForQueue(allUsers);
-      const idx = ordered.findIndex((e) => e.id === employeeId);
-      if (idx === -1) {
-        return res.status(404).json({ error: 'Funcionário não encontrado.' });
-      }
-      const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-      if (swapIdx >= 0 && swapIdx < ordered.length) {
-        const tmp = ordered[idx];
-        ordered[idx] = ordered[swapIdx];
-        ordered[swapIdx] = tmp;
-      }
-      await Promise.all(
-        ordered.map((emp, i) =>
-          emp.queueOrder === i ? Promise.resolve(emp) : req.db.updateUser(emp.id, { queueOrder: i })
-        )
-      );
-      return res.json({ ok: true });
-    }
-
-    return res.status(400).json({ error: 'Ação de fila inválida.' });
   }, true);
 
   // Admin Master: Manage Employees
@@ -931,18 +618,13 @@ export function createApi() {
     if (password.length < 4 || password.length > 128) {
       return res.status(400).json({ error: 'A senha do funcionário deve ter entre 4 e 128 caracteres.' });
     }
-    if (!requestedSlug || requestedSlug.length < 2 || requestedSlug === 'firma') {
-      return res.status(400).json({ error: 'Código do link inválido ou reservado.' });
+    if (!requestedSlug || requestedSlug.length < 2) {
+      return res.status(400).json({ error: 'Código do link inválido.' });
     }
     const reservedAdmin = (req.config.ADMIN_USERNAME || 'coringa').trim().toLowerCase();
     if (username === reservedAdmin) {
       return res.status(409).json({ error: 'Este login é reservado ao Administrador Master.' });
     }
-    const existingUsers = await req.db.users();
-    const maxOrder = sortEmployeesForQueue(existingUsers).reduce(
-      (max, u, idx) => Math.max(max, typeof u.queueOrder === 'number' ? u.queueOrder : idx),
-      -1
-    );
     const newEmployee: StoredUser = {
       id: crypto.randomUUID(),
       username,
@@ -951,7 +633,6 @@ export function createApi() {
       agentCode: requestedSlug,
       active: true,
       createdAt: new Date().toISOString(),
-      queueOrder: maxOrder + 1,
       passwordHash: hashPassword(password),
     };
 
@@ -1000,28 +681,12 @@ export function createApi() {
     return res.json({ ok: true });
   }, true);
 
-  // Contract submission (requires valid active agentCode or Link da Firma)
+  // Contract submission (requires valid active agentCode)
   route('POST', '/api/contracts', async (req, res) => {
     try {
       const body = req.body as Partial<LoanContractInput>;
       const agentCode = sanitizeSlug(sanitizeString(body.agentCode, 50));
-      let viaFirm = Boolean(body.viaFirm);
-      let agent = agentCode && agentCode !== 'firma' ? await req.db.activeAgent(agentCode) : undefined;
-      if (!agent && agentCode === 'firma') {
-        viaFirm = true;
-        const allUsers = await req.db.users();
-        const config = getFirmQueueConfig(allUsers);
-        const nowMs = Date.now();
-        const queueStartMs = getQueueWindowStartMs(config);
-        const allActivity = await req.db.activity(
-          new Date(Math.min(nowMs - 24 * 60 * 60 * 1000, queueStartMs)).toISOString(),
-          new Date(nowMs + 60 * 1000).toISOString(),
-          null
-        );
-        agent =
-          computeFirmQueueState(allUsers, allActivity.visits, allActivity.contracts, config, nowMs)
-            .nextAgent ?? undefined;
-      }
+      const agent = agentCode ? await req.db.activeAgent(agentCode) : undefined;
       if (!agent) {
         return res.status(403).json({
           error: 'Link de atendimento inválido ou desativado. Solicite um link válido a um consultor autorizado.',
@@ -1116,7 +781,6 @@ export function createApi() {
         agentId: agent.id,
         agentName: agent.name,
         agentCode: agent.agentCode,
-        ...(viaFirm ? { viaFirm: true } : {}),
         loanAmount,
         installments,
         installmentValue: serverInstallment,
