@@ -85,6 +85,7 @@ export default function App() {
   const [agentState, setAgentState] = useState<{
     status: 'none' | 'loading' | 'valid' | 'invalid';
     agentCode?: string;
+    viaFirm?: boolean;
     error?: string;
   }>({ status: 'none' });
 
@@ -141,13 +142,14 @@ export default function App() {
     () => ({
       ...form,
       agentCode: agentState.agentCode || form.agentCode,
+      viaFirm: Boolean(agentState.viaFirm),
       loanAmount: 0,
       installments: 0,
       installmentValue: 0,
       totalPayable: 0,
       firstDueDate: getAutoFirstDueDate(),
     }),
-    [form, agentState.agentCode]
+    [form, agentState.agentCode, agentState.viaFirm]
   );
 
   // Handle URL parameters on mount: ?contrato=... or ?ref=...
@@ -196,11 +198,35 @@ export default function App() {
     }
 
     if (refParam) {
+      const normalizedRef = refParam.trim().toLowerCase();
+      const isFirmUrl = normalizedRef === 'firma';
+      let preferredAgentCode = '';
+      if (isFirmUrl) {
+        try {
+          const savedFirm = window.localStorage.getItem('rp_firm_assigned_agent');
+          if (savedFirm) {
+            const parsedFirm = JSON.parse(savedFirm) as { agentCode?: string; updatedAt?: number };
+            if (
+              parsedFirm.agentCode &&
+              typeof parsedFirm.updatedAt === 'number' &&
+              Date.now() - parsedFirm.updatedAt < 7 * 86400000
+            ) {
+              preferredAgentCode = parsedFirm.agentCode;
+            }
+          }
+        } catch {
+          // Ignore malformed firm storage
+        }
+      }
+
       setAgentState({ status: 'loading' });
       fetch('/api/visits', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentCode: refParam }),
+        body: JSON.stringify({
+          agentCode: refParam,
+          ...(preferredAgentCode ? { preferredAgentCode } : {}),
+        }),
       })
         .then(async (res) => {
           const contentType = res.headers.get('content-type') || '';
@@ -213,12 +239,29 @@ export default function App() {
               });
               return;
             }
+            const viaFirm = Boolean(json.viaFirm);
+            if (viaFirm && json.agentCode) {
+              try {
+                window.localStorage.setItem(
+                  'rp_firm_assigned_agent',
+                  JSON.stringify({ agentCode: json.agentCode, updatedAt: Date.now() })
+                );
+              } catch {
+                // Ignore storage quota errors
+              }
+            }
             setAgentState({
               status: 'valid',
               agentCode: json.agentCode,
+              viaFirm,
             });
+            const draftStorageKey = viaFirm
+              ? 'rp_contract_draft_firma'
+              : `rp_contract_draft_${json.agentCode}`;
             try {
-              const rawDraft = window.localStorage.getItem(`rp_contract_draft_${json.agentCode}`);
+              const rawDraft =
+                window.localStorage.getItem(draftStorageKey) ||
+                window.localStorage.getItem(`rp_contract_draft_${json.agentCode}`);
               if (rawDraft) {
                 const parsed = JSON.parse(rawDraft) as {
                   step?: number;
@@ -243,6 +286,7 @@ export default function App() {
                     ...INITIAL_FORM,
                     ...parsed.form,
                     agentCode: json.agentCode,
+                    viaFirm,
                     loanAmount: 0,
                     installments: 0,
                     installmentValue: 0,
@@ -259,7 +303,7 @@ export default function App() {
               // Ignore malformed draft
             }
             setShowOpeningSplash(true);
-            setForm((prev) => ({ ...prev, agentCode: json.agentCode }));
+            setForm((prev) => ({ ...prev, agentCode: json.agentCode, viaFirm }));
             return;
           }
           throw new Error('STATIC_HOST');
@@ -276,9 +320,12 @@ export default function App() {
   // Auto-save draft whenever form, step, or custom mode changes
   useEffect(() => {
     if (agentState.status !== 'valid' || !agentState.agentCode || view !== 'home') return;
+    const draftStorageKey = agentState.viaFirm
+      ? 'rp_contract_draft_firma'
+      : `rp_contract_draft_${agentState.agentCode}`;
     try {
       window.localStorage.setItem(
-        `rp_contract_draft_${agentState.agentCode}`,
+        draftStorageKey,
         JSON.stringify({
           step: wizardStep,
           form,
@@ -289,7 +336,7 @@ export default function App() {
     } catch {
       // Ignore storage quota errors
     }
-  }, [agentState.status, agentState.agentCode, view, wizardStep, form, customAmountMode]);
+  }, [agentState.status, agentState.agentCode, agentState.viaFirm, view, wizardStep, form, customAmountMode]);
 
   const navigateToSite = () => {
     window.history.pushState({}, '', '/');
@@ -321,16 +368,18 @@ export default function App() {
   };
 
   const handleStartNewContract = () => {
-    if (agentState.agentCode) {
-      try {
+    try {
+      window.localStorage.removeItem('rp_contract_draft_firma');
+      window.localStorage.removeItem('rp_firm_assigned_agent');
+      if (agentState.agentCode) {
         window.localStorage.removeItem(`rp_contract_draft_${agentState.agentCode}`);
-      } catch {
-        // Ignore storage error
       }
+    } catch {
+      // Ignore storage error
     }
     const keepRef =
       agentState.status === 'valid' && agentState.agentCode
-        ? `?ref=${encodeURIComponent(agentState.agentCode)}`
+        ? `?ref=${encodeURIComponent(agentState.viaFirm ? 'firma' : agentState.agentCode)}`
         : '';
     window.history.replaceState({}, '', `/${keepRef}`);
     setSignedResult(null);
@@ -419,12 +468,14 @@ export default function App() {
       }
       const contract = json.contract as SignedLoanContract;
       const audit = json.audit as ContractVerificationAudit;
-      if (agentState.agentCode) {
-        try {
+      try {
+        window.localStorage.removeItem('rp_contract_draft_firma');
+        window.localStorage.removeItem('rp_firm_assigned_agent');
+        if (agentState.agentCode) {
           window.localStorage.removeItem(`rp_contract_draft_${agentState.agentCode}`);
-        } catch {
-          // Ignore storage error
         }
+      } catch {
+        // Ignore storage error
       }
       setResumedDraft(false);
       const params = new URLSearchParams({
